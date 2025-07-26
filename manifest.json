@@ -1,7 +1,7 @@
 {
     "name" : "UGEat",
     "appid" : "__UNI__2B3A1A4",
-    "description" : "",
+    "description" : "\"UG吃啥\"是一个帮助用户决定吃什么的程序，通过随机抽取的方式来解决选择困难症。",
     "versionName" : "1.0.0",
     "versionCode" : "100",
     "transformPx" : false,
@@ -50,7 +50,7 @@
     "quickapp" : {},
     /* 小程序特有相关 */
     "mp-weixin" : {
-        "appid" : "",
+        "appid" : "wx1d5a7c0db4249104",
         "setting" : {
             "urlCheck" : false
         },
