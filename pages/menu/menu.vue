@@ -7,7 +7,7 @@
 					<text class="btn-icon">+</text>
 					<text class="btn-text">添加菜品</text>
 				</button>
-				<button class="btn recipe-btn" @click="showRecipeModal = true">
+				<button class="btn recipe-btn" @click="showUGRecipes">
 					<text class="btn-icon">📖</text>
 					<text class="btn-text">UG秘制菜谱</text>
 				</button>
@@ -24,6 +24,20 @@
 				<button class="btn reset-btn" @click="resetMenu">
 					<text class="btn-icon">🔄</text>
 					<text class="btn-text">恢复默认</text>
+				</button>
+			</view>
+			<view class="toolbar-row">
+				<button class="btn batch-select-btn" @click="toggleSelectionMode" :class="{ 'active': isSelectionMode }">
+					<text class="btn-icon">{{ isSelectionMode ? '❌' : '☑️' }}</text>
+					<text class="btn-text">{{ isSelectionMode ? '取消选择' : '批量选择' }}</text>
+				</button>
+				<button class="btn batch-delete-btn" @click="batchDeleteItems" v-if="isSelectionMode && selectedItems.length > 0">
+					<text class="btn-icon">🗑️</text>
+					<text class="btn-text">删除选中({{ selectedItems.length }})</text>
+				</button>
+				<button class="btn select-all-btn" @click="selectAllItems" v-if="isSelectionMode">
+					<text class="btn-icon">{{ isAllSelected ? '☑️' : '☐' }}</text>
+					<text class="btn-text">{{ getSelectAllText() }}</text>
 				</button>
 			</view>
 		</view>
@@ -45,8 +59,17 @@
 				暂无菜品，点击添加菜品开始管理你的粮库吧！
 			</view>
 			<view v-else>
-				<view class="menu-item" v-for="item in filteredMenuList" :key="item.id" :class="{ 'disabled': !item.enabled }">
-					<view class="item-content" @click="editMenuItem(item)">
+				<view class="menu-item" v-for="item in filteredMenuList" :key="item.id" :class="{ 
+					'disabled': !item.enabled, 
+					'selected': isSelectionMode && selectedItems.includes(item.id),
+					'selection-mode': isSelectionMode
+				}">
+					<!-- 批量选择复选框 -->
+					<view class="selection-checkbox" v-if="isSelectionMode" @click.stop="toggleItemSelection(item.id)">
+						<text class="checkbox-icon">{{ selectedItems.includes(item.id) ? '☑️' : '☐' }}</text>
+					</view>
+					
+					<view class="item-content" @click="isSelectionMode ? toggleItemSelection(item.id) : editMenuItem(item)">
 						<view class="item-header">
 							<text class="item-name">{{ item.name }}</text>
 							<view class="item-price-status">
@@ -68,7 +91,7 @@
 							<text class="tag" v-for="tag in item.tags" :key="tag">{{ tag }}</text>
 						</view>
 					</view>
-					<view class="item-actions">
+					<view class="item-actions" v-if="!isSelectionMode">
 						<button class="action-btn toggle-btn" 
 								@click.stop="toggleItemStatus(item)"
 								:class="{ 'enabled': item.enabled, 'disabled': !item.enabled }">
@@ -206,7 +229,7 @@
 		</view>
 		
 		<!-- UG秘制菜谱弹窗 -->
-		<view class="modal-overlay" v-if="showRecipeModal" @click="showRecipeModal = false">
+		<view class="modal-overlay recipe-overlay" v-if="showRecipeModal" @click="showRecipeModal = false">
 			<view class="modal large recipe-modal" @click.stop>
 				<view class="modal-header">
 					<text class="modal-title">UG秘制菜谱</text>
@@ -320,70 +343,7 @@
 
 <script>
 import Storage from '@/utils/storage.js'
-
-// 导入菜谱数据
-const recipeData = {
-	breakfast: [
-		{ name: '小笼包', mealTimes: ['早餐'], price: 8, type: '日常', tags: ['面食', '营养'] },
-		{ name: '豆浆油条', mealTimes: ['早餐'], price: 6, type: '日常', tags: ['快餐', '营养'] },
-		{ name: '煎饼果子', mealTimes: ['早餐'], price: 10, type: '日常', tags: ['快餐', '面食'] },
-		{ name: '包子', mealTimes: ['早餐'], price: 5, type: '日常', tags: ['面食'] },
-		{ name: '豆腐脑', mealTimes: ['早餐'], price: 4, type: '日常', tags: ['清淡'] },
-		{ name: '胡辣汤', mealTimes: ['早餐'], price: 6, type: '日常', tags: ['辛辣'] },
-		{ name: '手抓饼', mealTimes: ['早餐'], price: 8, type: '日常', tags: ['快餐'] },
-		{ name: '鸡蛋灌饼', mealTimes: ['早餐'], price: 9, type: '日常', tags: ['快餐'] },
-		{ name: '蒸蛋羹', mealTimes: ['早餐'], price: 7, type: '日常', tags: ['清淡'] },
-		{ name: '稀饭配咸菜', mealTimes: ['早餐'], price: 5, type: '日常', tags: ['清淡'] }
-	],
-	lunch: [
-		{ name: '蛋炒饭', mealTimes: ['午餐'], price: 15, type: '日常', tags: ['快餐'] },
-		{ name: '麻婆豆腐', mealTimes: ['午餐'], price: 18, type: '日常', tags: ['辛辣'] },
-		{ name: '宫保鸡丁', mealTimes: ['午餐'], price: 25, type: '日常', tags: ['辛辣'] },
-		{ name: '红烧肉', mealTimes: ['午餐'], price: 35, type: '大餐', tags: ['营养'] },
-		{ name: '水煮鱼', mealTimes: ['午餐'], price: 58, type: '大餐', tags: ['辛辣', '海鲜'] },
-		{ name: '糖醋里脊', mealTimes: ['午餐'], price: 28, type: '日常', tags: ['酸甜'] },
-		{ name: '回锅肉', mealTimes: ['午餐'], price: 26, type: '日常', tags: ['辛辣'] },
-		{ name: '青椒肉丝', mealTimes: ['午餐'], price: 20, type: '日常', tags: ['营养'] },
-		{ name: '鱼香肉丝', mealTimes: ['午餐'], price: 22, type: '日常', tags: ['酸甜'] },
-		{ name: '土豆丝', mealTimes: ['午餐'], price: 12, type: '日常', tags: ['清淡'] }
-	],
-	dinner: [
-		{ name: '火锅', mealTimes: ['晚餐'], price: 80, type: '大餐', tags: ['辛辣'] },
-		{ name: '海底捞', mealTimes: ['晚餐'], price: 120, type: '大餐', tags: ['辛辣'] },
-		{ name: '麦当劳', mealTimes: ['晚餐'], price: 35, type: '日常', tags: ['快餐', '西式'] },
-		{ name: '肯德基', mealTimes: ['晚餐'], price: 40, type: '日常', tags: ['快餐', '西式'] },
-		{ name: '日式料理', mealTimes: ['晚餐'], price: 88, type: '大餐', tags: ['日料', '海鲜'] },
-		{ name: '韩式烤肉', mealTimes: ['晚餐'], price: 75, type: '大餐', tags: ['烧烤'] },
-		{ name: '披萨', mealTimes: ['晚餐'], price: 45, type: '日常', tags: ['西式'] },
-		{ name: '汉堡', mealTimes: ['晚餐'], price: 25, type: '日常', tags: ['快餐'] },
-		{ name: '炸鸡', mealTimes: ['晚餐'], price: 30, type: '日常', tags: ['快餐'] },
-		{ name: '烤鸭', mealTimes: ['晚餐'], price: 68, type: '大餐', tags: ['营养'] }
-	],
-	latenight: [
-		{ name: '泡面', mealTimes: ['夜宵'], price: 5, type: '日常', tags: ['快餐', '面食'] },
-		{ name: '烧烤', mealTimes: ['夜宵'], price: 40, type: '大餐', tags: ['烧烤'] },
-		{ name: '麻辣烫', mealTimes: ['夜宵'], price: 20, type: '日常', tags: ['辛辣'] },
-		{ name: '关东煮', mealTimes: ['夜宵'], price: 15, type: '日常', tags: ['清淡'] },
-		{ name: '煎饺', mealTimes: ['夜宵'], price: 12, type: '日常', tags: ['快餐'] },
-		{ name: '小龙虾', mealTimes: ['夜宵'], price: 68, type: '大餐', tags: ['海鲜', '辛辣'] },
-		{ name: '炸串', mealTimes: ['夜宵'], price: 25, type: '日常', tags: ['快餐'] },
-		{ name: '臭豆腐', mealTimes: ['夜宵'], price: 8, type: '日常', tags: ['快餐'] },
-		{ name: '烤冷面', mealTimes: ['夜宵'], price: 10, type: '日常', tags: ['面食'] },
-		{ name: '铁板鱿鱼', mealTimes: ['夜宵'], price: 15, type: '日常', tags: ['海鲜'] }
-	],
-	snacks: [
-		{ name: '薯片', mealTimes: ['零食'], price: 8, type: '日常', tags: ['快餐'] },
-		{ name: '奶茶', mealTimes: ['零食'], price: 15, type: '日常', tags: ['甜品', '饮品'] },
-		{ name: '蛋糕', mealTimes: ['零食'], price: 30, type: '大餐', tags: ['甜品'] },
-		{ name: '冰淇淋', mealTimes: ['零食'], price: 12, type: '日常', tags: ['甜品'] },
-		{ name: '爆米花', mealTimes: ['零食'], price: 10, type: '日常', tags: ['快餐'] },
-		{ name: '巧克力', mealTimes: ['零食'], price: 15, type: '日常', tags: ['甜品'] },
-		{ name: '坚果', mealTimes: ['零食'], price: 20, type: '日常', tags: ['营养'] },
-		{ name: '果汁', mealTimes: ['零食'], price: 8, type: '日常', tags: ['饮品'] },
-		{ name: '咖啡', mealTimes: ['零食'], price: 25, type: '日常', tags: ['饮品'] },
-		{ name: '饼干', mealTimes: ['零食'], price: 6, type: '日常', tags: ['甜品'] }
-	]
-}
+import { getUGSecretRecipes, getCategories, getAllRecipes } from '@/utils/recipes.js'
 
 export default {
 	data() {
@@ -393,6 +353,10 @@ export default {
 			filteredMenuList: [],
 			searchKeyword: '',
 			showDisabledItems: true, // 是否显示禁用的菜品
+			
+			// 批量删除状态
+			isSelectionMode: false, // 是否处于选择模式
+			selectedItems: [], // 选中的菜品ID列表
 			
 			// 弹窗状态
 			showAddModal: false,
@@ -425,38 +389,29 @@ export default {
 			
 			// 菜谱相关
 			selectedCategory: 'breakfast',
-			recipeData: recipeData
+			recipeData: getAllRecipes() // 使用默认数据，点击按钮时会重新加载
 		}
 	},
 	
 	computed: {
 		// 获取所有可用的分类（从菜谱数据中读取）
 		availableCategories() {
-			const categories = []
-			const categoryMap = {
-				'breakfast': '早餐',
-				'lunch': '午餐', 
-				'dinner': '晚餐',
-				'latenight': '夜宵',
-				'snacks': '零食'
-			}
-			
-			Object.keys(this.recipeData).forEach(key => {
-				if (this.recipeData[key] && this.recipeData[key].length > 0) {
-					categories.push({
-						key: key,
-						name: categoryMap[key] || key,
-						count: this.recipeData[key].length
-					})
-				}
-			})
-			
-			return categories
+			// categories 是一定有的，直接使用
+			return this.recipeData.categories.map(category => ({
+				key: category.key,
+				name: category.name,
+				count: (this.recipeData[category.key] || []).length
+			}))
 		},
 		
 		// 当前选中分类的菜品
 		currentRecipes() {
 			return this.recipeData[this.selectedCategory] || []
+		},
+		
+		// 是否全选状态
+		isAllSelected() {
+			return this.filteredMenuList.length > 0 && this.selectedItems.length === this.filteredMenuList.length
 		}
 	},
 	
@@ -466,6 +421,45 @@ export default {
 	},
 	
 	methods: {
+		// 加载菜谱数据
+		async loadRecipeData() {
+			try {
+				this.recipeData = await getUGSecretRecipes()
+			} catch (error) {
+				console.error('加载菜谱数据失败:', error)
+				// 如果加载失败，使用默认数据
+				this.recipeData = getAllRecipes()
+				// 抛出错误让调用方知道加载失败
+				throw error
+			}
+		},
+		
+		// 显示UG秘制菜谱
+		async showUGRecipes() {
+			// 显示加载提示
+			uni.showLoading({
+				title: '加载菜谱中...'
+			})
+			
+			try {
+				// 加载菜谱数据
+				await this.loadRecipeData()
+				
+				// 隐藏加载提示
+				uni.hideLoading()
+				
+				// 显示菜谱弹窗
+				this.showRecipeModal = true
+			} catch (error) {
+				console.error('加载UG秘制菜谱失败:', error)
+				uni.hideLoading()
+				uni.showToast({
+					title: '加载菜谱失败',
+					icon: 'none'
+				})
+			}
+		},
+		
 		// 加载菜单数据
 		loadMenuData() {
 			this.menuList = Storage.getMenuList()
@@ -769,14 +763,9 @@ export default {
 		
 		// 获取分类名称
 		getCategoryName(category) {
-			const names = {
-				breakfast: '早餐',
-				lunch: '午餐',
-				dinner: '晚餐',
-				latenight: '夜宵',
-				snacks: '零食'
-			}
-			return names[category] || category
+			// categories 是一定有的，直接从中获取
+			const categoryItem = this.recipeData.categories.find(cat => cat.key === category)
+			return categoryItem ? categoryItem.name : category
 		},
 		
 		// 获取当前分类名称
@@ -786,6 +775,20 @@ export default {
 		
 		// 添加菜谱到菜单
 		addRecipeToMenu(recipe) {
+			// 检查是否已存在同名菜品
+			const existingMenuList = Storage.getMenuList()
+			const existingNames = existingMenuList.map(item => item.name.trim().toLowerCase())
+			const recipeName = recipe.name.trim().toLowerCase()
+			
+			if (existingNames.includes(recipeName)) {
+				uni.showToast({
+					title: `菜品"${recipe.name}"已存在`,
+					icon: 'none',
+					duration: 2000
+				})
+				return
+			}
+			
 			const newItem = {
 				name: recipe.name,
 				mealTimes: recipe.mealTimes || [],
@@ -821,25 +824,47 @@ export default {
 				content: `确定要导入${recipes.length}个${this.getCurrentCategoryName()}菜品吗？`,
 				success: (res) => {
 					if (res.confirm) {
-						// 导入当前分类的所有菜品
+						const existingMenuList = Storage.getMenuList()
+						const existingNames = new Set(existingMenuList.map(item => item.name.trim().toLowerCase()))
+						const newItems = []
+						const skippedItems = []
+						
+						// 检查重复并导入当前分类的所有菜品
 						recipes.forEach(recipe => {
-							const newItem = {
-								name: recipe.name,
-								mealTimes: recipe.mealTimes || [],
-								price: recipe.price,
-								type: recipe.type,
-								tags: recipe.tags || [],
-								enabled: true
+							const recipeName = recipe.name.trim().toLowerCase()
+							if (existingNames.has(recipeName)) {
+								skippedItems.push(recipe.name)
+							} else {
+								const newItem = {
+									name: recipe.name,
+									mealTimes: recipe.mealTimes || [],
+									price: recipe.price,
+									type: recipe.type,
+									tags: recipe.tags || [],
+									enabled: true
+								}
+								Storage.addMenuItem(newItem)
+								newItems.push(newItem)
+								existingNames.add(recipeName) // 防止本次导入中的重复
 							}
-							Storage.addMenuItem(newItem)
 						})
 						
 						this.loadMenuData()
 						this.showRecipeModal = false
 						
+						// 显示导入结果
+						let message = `成功导入${newItems.length}个菜品`
+						if (skippedItems.length > 0) {
+							message += `，跳过${skippedItems.length}个重复菜品`
+							if (skippedItems.length <= 3) {
+								message += `：${skippedItems.join('、')}`
+							}
+						}
+						
 						uni.showToast({
-							title: `成功导入${recipes.length}个菜品`,
-							icon: 'success'
+							title: message,
+							icon: 'success',
+							duration: 3000
 						})
 					}
 				}
@@ -877,7 +902,10 @@ export default {
 			
 			try {
 				const lines = this.importData.split('\n').filter(line => line.trim())
-				const data = []
+				const newData = []
+				const skippedData = []
+				const existingMenuList = Storage.getMenuList()
+				const existingNames = new Set(existingMenuList.map(item => item.name.trim().toLowerCase()))
 				
 				// 跳过标题行（如果有）
 				const startIndex = lines[0].includes('菜品名称') ? 1 : 0
@@ -892,31 +920,50 @@ export default {
 						const tags = parts[4] ? parts[4].split('|').map(tag => tag.trim()).filter(tag => tag) : []
 						
 						if (name) {
-							data.push({
-								id: Date.now() + i,
-								name,
-								price,
-								type,
-								mealTimes: mealTimes.length > 0 ? mealTimes : ['午餐'],
-								tags: tags.length > 0 ? tags : [],
-								enabled: true
-							})
+							// 检查是否已存在同名菜品
+							if (existingNames.has(name.trim().toLowerCase())) {
+								skippedData.push(name)
+							} else {
+								const newItem = {
+									id: Date.now() + i + Math.random(),
+									name,
+									price,
+									type,
+									mealTimes: mealTimes.length > 0 ? mealTimes : ['午餐'],
+									tags: tags.length > 0 ? tags : [],
+									enabled: true
+								}
+								newData.push(newItem)
+								existingNames.add(name.trim().toLowerCase()) // 防止导入数据中的重复
+							}
 						}
 					}
 				}
 				
-				if (data.length === 0) {
+				if (newData.length === 0 && skippedData.length === 0) {
 					throw new Error('没有有效的菜品数据')
 				}
 				
-				Storage.setMenuList(data)
+				// 合并到现有菜单
+				const mergedMenuList = [...existingMenuList, ...newData]
+				Storage.setMenuList(mergedMenuList)
 				this.loadMenuData()
 				this.showImportModal = false
 				this.importData = ''
 				
+				// 显示导入结果
+				let message = `成功导入${newData.length}个菜品`
+				if (skippedData.length > 0) {
+					message += `，跳过${skippedData.length}个重复菜品`
+					if (skippedData.length <= 5) {
+						message += `：${skippedData.join('、')}`
+					}
+				}
+				
 				uni.showToast({
-					title: `成功导入${data.length}个菜品`,
-					icon: 'success'
+					title: message,
+					icon: 'success',
+					duration: 3000
 				})
 			} catch (error) {
 				uni.showToast({
@@ -952,16 +999,104 @@ export default {
 			})
 		},
 		
-		// 获取分类名称
-		getCategoryName(category) {
-			const names = {
-				breakfast: '早餐',
-				lunch: '午餐', 
-				dinner: '晚餐',
-				latenight: '夜宵',
-				snacks: '零食'
+		// 批量删除相关方法
+		
+		// 切换选择模式
+		toggleSelectionMode() {
+			this.isSelectionMode = !this.isSelectionMode
+			if (!this.isSelectionMode) {
+				this.selectedItems = []
 			}
-			return names[category] || category
+		},
+		
+		// 切换单个菜品的选择状态
+		toggleItemSelection(itemId) {
+			const index = this.selectedItems.indexOf(itemId)
+			if (index > -1) {
+				this.selectedItems.splice(index, 1)
+			} else {
+				this.selectedItems.push(itemId)
+			}
+		},
+		
+		// 获取全选按钮文本
+		getSelectAllText() {
+			const isFiltered = !this.showDisabledItems || this.searchKeyword.trim()
+			const totalCount = this.menuList.length
+			const filteredCount = this.filteredMenuList.length
+			
+			if (this.isAllSelected) {
+				return '取消全选'
+			}
+			
+			if (isFiltered && totalCount > filteredCount) {
+				return `全选(${filteredCount}项)`
+			}
+			
+			return '全选'
+		},
+		
+		// 全选/取消全选
+		selectAllItems() {
+			if (this.selectedItems.length === this.filteredMenuList.length) {
+				// 当前为全选状态，执行取消全选
+				this.selectedItems = []
+			} else {
+				// 执行全选
+				this.selectedItems = this.filteredMenuList.map(item => item.id)
+			}
+		},
+		
+		// 批量删除选中的菜品
+		batchDeleteItems() {
+			if (this.selectedItems.length === 0) {
+				uni.showToast({
+					title: '请先选择要删除的菜品',
+					icon: 'none'
+				})
+				return
+			}
+			
+			// 检查是否有过滤条件
+			const isFiltered = !this.showDisabledItems || this.searchKeyword.trim()
+			const totalMenuCount = this.menuList.length
+			const selectedCount = this.selectedItems.length
+			
+			let content = `确定要删除选中的 ${selectedCount} 个菜品吗？`
+			
+			// 如果有过滤条件且选择了全部显示的菜品，给出特别提示
+			if (isFiltered && selectedCount === this.filteredMenuList.length && totalMenuCount > selectedCount) {
+				content = `当前有过滤条件，将删除显示的 ${selectedCount} 个菜品。\n\n如需删除全部菜品，请先清除搜索条件并显示全部菜品后再操作。\n\n确定要删除选中的 ${selectedCount} 个菜品吗？`
+			}
+			
+			uni.showModal({
+				title: '确认删除',
+				content: content,
+				success: (res) => {
+					if (res.confirm) {
+						// 执行批量删除 - 直接操作menuList数组
+						let menuList = this.menuList
+						// 过滤出未被选中的菜品
+						menuList = menuList.filter(item => !this.selectedItems.includes(item.id))
+						
+						// 保存更新后的菜单数据
+						Storage.setMenuList(menuList)
+						
+						// 重新加载数据
+						this.loadMenuData()
+						
+						// 显示成功消息
+						uni.showToast({
+							title: `成功删除${selectedCount}个菜品`,
+							icon: 'success'
+						})
+						
+						// 清空选择并退出选择模式
+						this.selectedItems = []
+						this.isSelectionMode = false
+					}
+				}
+			})
 		}
 	}
 }
@@ -970,9 +1105,11 @@ export default {
 <style scoped>
 .container {
 	background: #f5f5f5;
-	height: 100%;
+	height: calc(100vh - 100rpx);
 	padding: 20rpx;
 	overflow: hidden;
+	display: flex;
+	flex-direction: column;
 }
 
 /* 工具栏 */
@@ -982,6 +1119,7 @@ export default {
 	padding: 20rpx;
 	margin-bottom: 20rpx;
 	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
+	flex-shrink: 0;
 }
 
 .toolbar-main {
@@ -1086,6 +1224,50 @@ export default {
 	background: #545b62;
 }
 
+/* 批量操作按钮 */
+.batch-select-btn {
+	background: #fd7e14;
+	color: white;
+	border-color: #fd7e14;
+}
+
+.batch-select-btn.active {
+	background: #dc3545;
+	border-color: #dc3545;
+}
+
+.batch-select-btn:active {
+	background: #fd7e14;
+}
+
+.batch-delete-btn {
+	background: linear-gradient(135deg, #dc3545, #c82333);
+	color: white;
+	border-color: #dc3545;
+	box-shadow: 0 4rpx 12rpx rgba(220, 53, 69, 0.3);
+	transition: all 0.2s ease;
+}
+
+.batch-delete-btn:active {
+	background: linear-gradient(135deg, #c82333, #a61e2a);
+	transform: scale(0.96);
+	box-shadow: 0 2rpx 8rpx rgba(220, 53, 69, 0.4);
+}
+
+.select-all-btn {
+	background: linear-gradient(135deg, #6f42c1, #59359a);
+	color: white;
+	border-color: #6f42c1;
+	box-shadow: 0 4rpx 12rpx rgba(111, 66, 193, 0.3);
+	transition: all 0.2s ease;
+}
+
+.select-all-btn:active {
+	background: linear-gradient(135deg, #59359a, #4c2f83);
+	transform: scale(0.96);
+	box-shadow: 0 2rpx 8rpx rgba(111, 66, 193, 0.4);
+}
+
 /* 搜索栏 */
 .search-bar {
 	background: #ffffff;
@@ -1096,6 +1278,7 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 20rpx;
+	flex-shrink: 0;
 }
 
 .search-input {
@@ -1136,7 +1319,8 @@ export default {
 
 /* 菜品列表 */
 .menu-list {
-	height: calc(100vh - 480rpx);
+	flex: 1;
+	overflow-y: auto;
 }
 
 .empty-tip {
@@ -1160,6 +1344,7 @@ export default {
 	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
 	transition: all 0.2s ease;
 	border: 1rpx solid #e9ecef;
+	position: relative;
 }
 
 .menu-item.disabled {
@@ -1167,8 +1352,60 @@ export default {
 	background: #f8f9fa;
 }
 
+.menu-item.selected {
+	border-color: #007bff;
+	background: #f8f9ff;
+	box-shadow: 0 4rpx 12rpx rgba(0, 123, 255, 0.2);
+}
+
 .menu-item:active {
 	transform: scale(0.98);
+}
+
+/* 批量选择复选框 */
+.selection-checkbox {
+	position: absolute;
+	top: 20rpx;
+	left: 20rpx;
+	width: 44rpx;
+	height: 44rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10;
+	background: #ffffff;
+	border: 2rpx solid #e9ecef;
+	border-radius: 8rpx;
+	box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.1);
+	transition: all 0.2s ease;
+}
+
+.selection-checkbox:active {
+	transform: scale(0.9);
+	background: #f8f9fa;
+}
+
+.checkbox-icon {
+	font-size: 28rpx;
+	color: #007bff;
+	font-weight: bold;
+}
+
+/* 当处于选择模式时，调整item-content的左边距 */
+.menu-item .item-content {
+	flex: 1;
+	margin-left: 0;
+	transition: all 0.2s ease;
+}
+
+/* 选择模式下调整内容区域 */
+.menu-item.selected .item-content {
+	margin-left: 76rpx;
+}
+
+/* 选择模式时的通用样式 */
+.menu-item.selection-mode .item-content {
+	margin-left: 76rpx;
 }
 
 .item-content {
@@ -1318,6 +1555,11 @@ export default {
 	align-items: center;
 	justify-content: center;
 	z-index: 9999;
+}
+
+/* UG秘制菜谱弹窗使用较低的层级，避免遮挡系统确认对话框 */
+.recipe-overlay {
+	z-index: 1;
 }
 
 .modal {
@@ -1606,6 +1848,7 @@ export default {
 	width: 200rpx;
 	border-right: 1rpx solid #e9ecef;
 	background: #f8f9fa;
+	height: 100%;
 }
 
 .category-list {
@@ -1645,12 +1888,15 @@ export default {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
 }
 
 .recipe-header {
 	padding: 20rpx;
 	border-bottom: 1rpx solid #e9ecef;
 	background: #ffffff;
+	flex-shrink: 0;
 }
 
 .recipe-title {
@@ -1662,6 +1908,8 @@ export default {
 .recipe-list {
 	flex: 1;
 	padding: 20rpx;
+	height: 100%;
+	overflow: hidden;
 }
 
 .recipe-items {

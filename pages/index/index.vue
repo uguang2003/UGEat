@@ -141,17 +141,18 @@
 					<view class="filter-item">
 						<text class="filter-label">附近美食：</text>
 						<view class="location-search">
-							<button class="location-btn" @click="showLocationModal = true">
+							<!-- <button class="location-btn" @click="showLocationModal = true"> -->
+							<button class="location-btn" @click="notOpen">
 								根据位置搜索附近美食
 							</button>
-							<view class="nearby-results" v-if="nearbyFoods.length > 0">
+							<!-- <view class="nearby-results" v-if="nearbyFoods.length > 0">
 								<text class="nearby-item" 
 									  v-for="food in nearbyFoods" 
 									  :key="food.name"
 									  @click="selectNearbyFood(food)">
 									{{ food.name }} - {{ food.distance }}
 								</text>
-							</view>
+							</view> -->
 						</view>
 					</view>
 				</view>
@@ -352,7 +353,8 @@
 </template>
 
 <script>
-import { getAllRecipes } from '@/utils/recipes.js'
+import MapService from '@/utils/map-service.js'
+import Storage from '@/utils/storage.js'
 
 export default {
 	data() {
@@ -557,13 +559,12 @@ export default {
 		
 		async loadMenu() {
 			try {
-				const storage = await import('@/utils/storage.js')
-				this.menuList = storage.default.getMenuList()
+				// 直接使用静态导入，避免动态导入在小程序中的兼容性问题
+				this.menuList = Storage.getMenuList()
 			} catch (e) {
 				console.log('加载菜单失败', e)
 				// 使用storage.js中的默认菜单
-				const storage = await import('@/utils/storage.js')
-				this.menuList = storage.default.getDefaultMenu()
+				this.menuList = Storage.getDefaultMenu()
 			}
 		},
 		
@@ -1045,81 +1046,47 @@ export default {
 			this.currentLocationName = this.manualLocation
 			
 			try {
-				// 模拟根据地址搜索附近美食
-				await this.searchNearbyFoodByAddress(this.manualLocation)
+				// 使用新的地图服务搜索附近美食
+				const restaurants = await MapService.searchNearbyByAddress(this.manualLocation)
+				this.nearbyFoods = restaurants
+				
+				uni.showToast({
+					title: `已找到 ${this.manualLocation} 附近 ${restaurants.length} 家美食`,
+					icon: 'success'
+				})
 			} catch (e) {
 				console.error('搜索失败', e)
 				uni.showToast({
-					title: '搜索失败，请重试',
+					title: e.message || '搜索失败，请重试',
+					icon: 'none'
+				})
+			} finally {
+				this.isSearchingLocation = false
+				this.manualLocation = ''
+			}
+		},
+		
+		async searchNearbyFoodByLocation(location) {
+			try {
+				this.isSearchingLocation = true
+				
+				// 使用新的地图服务搜索附近美食
+				const restaurants = await MapService.searchNearbyRestaurants(location, '美食', 2000)
+				this.nearbyFoods = restaurants
+				
+				uni.showToast({
+					title: `已找到附近 ${restaurants.length} 家美食`,
+					icon: 'success'
+				})
+			} catch (e) {
+				console.error('搜索附近美食失败:', e)
+				uni.showToast({
+					title: e.message || '搜索失败，请重试',
 					icon: 'none'
 				})
 			} finally {
 				this.isSearchingLocation = false
 			}
-		},
-		
-		async searchNearbyFoodByAddress(address) {
-			// 模拟根据地址搜索附近美食的延迟
-			await new Promise(resolve => setTimeout(resolve, 1000))
-			
-			// 根据不同位置返回不同的模拟数据
-			let mockNearbyFoods = []
-			
-			if (address.includes('学校') || address.includes('大学')) {
-				mockNearbyFoods = [
-					{ name: '学生食堂', distance: '100m', price: 12, type: '日常', tags: ['午餐', '便宜'] },
-					{ name: '麦当劳', distance: '200m', price: 25, type: '日常', tags: ['快餐'] },
-					{ name: '黄焖鸡米饭', distance: '150m', price: 18, type: '日常', tags: ['午餐'] },
-					{ name: '兰州拉面', distance: '300m', price: 16, type: '日常', tags: ['面食'] }
-				]
-			} else if (address.includes('公司') || address.includes('办公')) {
-				mockNearbyFoods = [
-					{ name: '商务套餐', distance: '50m', price: 35, type: '日常', tags: ['午餐', '商务'] },
-					{ name: '日式料理', distance: '200m', price: 68, type: '大餐', tags: ['日料'] },
-					{ name: '咖啡厅', distance: '100m', price: 28, type: '日常', tags: ['饮品', '轻食'] },
-					{ name: '川菜馆', distance: '400m', price: 45, type: '日常', tags: ['川菜'] }
-				]
-			} else if (address.includes('商场') || address.includes('购物')) {
-				mockNearbyFoods = [
-					{ name: '海底捞', distance: '200m', price: 120, type: '大餐', tags: ['火锅'] },
-					{ name: '肯德基', distance: '100m', price: 30, type: '日常', tags: ['快餐'] },
-					{ name: '星巴克', distance: '150m', price: 35, type: '日常', tags: ['饮品'] },
-					{ name: '西贝莜面村', distance: '300m', price: 80, type: '大餐', tags: ['西北菜'] }
-				]
-			} else {
-				// 默认美食
-				mockNearbyFoods = [
-					{ name: '兰州拉面', distance: '200m', price: 18, type: '日常', tags: ['午餐', '面食'] },
-					{ name: '沙县小吃', distance: '350m', price: 15, type: '日常', tags: ['午餐'] },
-					{ name: '黄焖鸡米饭', distance: '400m', price: 20, type: '日常', tags: ['午餐'] },
-					{ name: '麦当劳', distance: '500m', price: 35, type: '日常', tags: ['快餐'] }
-				]
-			}
-			
-			this.nearbyFoods = mockNearbyFoods
-			
-			uni.showToast({
-				title: `已找到 ${address} 附近美食`,
-				icon: 'success'
-			})
-		},
-		
-		async searchNearbyFoodByLocation(location) {
-			// 模拟附近美食数据（实际项目中应该调用地图API）
-			const mockNearbyFoods = [
-				{ name: '兰州拉面', distance: '200m', price: 18, type: '日常', tags: ['午餐', '面食'] },
-				{ name: '沙县小吃', distance: '350m', price: 15, type: '日常', tags: ['午餐'] },
-				{ name: '麦当劳', distance: '500m', price: 35, type: '日常', tags: ['快餐'] },
-				{ name: '海底捞', distance: '800m', price: 120, type: '大餐', tags: ['火锅'] },
-				{ name: '星巴克', distance: '1.2km', price: 25, type: '日常', tags: ['饮品'] }
-			]
-			
-			this.nearbyFoods = mockNearbyFoods
-			
-			uni.showToast({
-				title: '已找到附近美食',
-				icon: 'success'
-			})
 		},
 		
 		selectNearbyFood(food) {
@@ -1182,6 +1149,13 @@ export default {
 					})
 					break
 			}
+		},
+
+		notOpen() {
+			uni.showToast({
+				title: '该功能暂未开放',
+				icon: 'none'
+			});
 		},
 		
 		// 页面跳转
@@ -1378,13 +1352,14 @@ export default {
 
 .order-delivery-btn.subtle {
 	background: transparent;
-	color: #999;
-	border: 1rpx solid #eee;
-	font-size: 22rpx;
+	color: #ccc;
+	border: 1rpx solid #f0f0f0;
+	font-size: 20rpx;
 	font-weight: normal;
-	padding: 8rpx 16rpx;
+	padding: 6rpx 12rpx;
 	box-shadow: none;
-	opacity: 0.7;
+	opacity: 0.5;
+	border-radius: 12rpx;
 }
 
 .order-delivery-btn:active {
@@ -1426,38 +1401,40 @@ export default {
 
 /* 筛选区域 */
 .filter-section {
-	background: linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(255, 248, 225, 0.3));
-	border: 1rpx solid rgba(255, 183, 77, 0.3);
+	background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(255, 248, 225, 0.9));
+	border: 1rpx solid rgba(255, 183, 77, 0.2);
 	backdrop-filter: blur(10rpx);
-	border-radius: 20rpx;
-	padding: 30rpx;
-	margin-bottom: 40rpx;
+	border-radius: 16rpx;
+	padding: 24rpx;
+	margin-bottom: 32rpx;
+	box-shadow: 0 4rpx 20rpx rgba(255, 138, 101, 0.1);
 }
 
 .basic-filter {
-	background: linear-gradient(145deg, #FFFFFF, #FFF8E1);
-	border-radius: 20rpx;
-	padding: 25rpx;
-	border: 2rpx solid rgba(255, 183, 77, 0.3);
-	margin-bottom: 20rpx;
+	background: transparent;
+	border-radius: 0;
+	padding: 0;
+	border: none;
+	margin-bottom: 16rpx;
 }
 
 .filter-row {
 	display: flex;
 	align-items: center;
-	gap: 20rpx;
+	gap: 16rpx;
 	flex-wrap: nowrap;
+	margin-bottom: 16rpx;
 }
 
 .filter-item {
 	flex: 1;
-	min-width: 160rpx;
+	min-width: 140rpx;
 	margin-bottom: 0;
 }
 
 .filter-label {
 	color: #5D4037;
-	font-size: 24rpx;
+	font-size: 22rpx;
 	font-weight: 600;
 	display: block;
 	margin-bottom: 8rpx;
@@ -1468,39 +1445,41 @@ export default {
 }
 
 .picker-content {
-	background: rgba(255, 255, 255, 0.8);
-	border: 1rpx solid rgba(255, 183, 77, 0.5);
-	border-radius: 15rpx;
-	padding: 10rpx 12rpx;
+	background: rgba(255, 255, 255, 0.9);
+	border: 1rpx solid rgba(255, 183, 77, 0.3);
+	border-radius: 12rpx;
+	padding: 8rpx 12rpx;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	color: #5D4037;
 	font-size: 22rpx;
+	transition: all 0.2s ease;
 }
 
 .picker-arrow {
 	color: #FF8A65;
-	font-size: 18rpx;
+	font-size: 16rpx;
 }
 
 .advanced-toggle {
 	background: linear-gradient(45deg, #FF8A65, #FF7043);
 	color: white;
 	border: none;
-	border-radius: 20rpx;
-	padding: 12rpx 16rpx;
-	font-size: 22rpx;
+	border-radius: 16rpx;
+	padding: 8rpx 14rpx;
+	font-size: 20rpx;
 	display: flex;
 	align-items: center;
 	white-space: nowrap;
 	flex-shrink: 0;
-	gap: 8rpx;
-	box-shadow: 0 4rpx 12rpx rgba(255, 138, 101, 0.3);
+	gap: 6rpx;
+	box-shadow: 0 2rpx 8rpx rgba(255, 138, 101, 0.2);
 }
 
 .toggle-arrow {
 	transition: transform 0.3s ease;
+	font-size: 16rpx;
 }
 
 .toggle-arrow.active {
@@ -1508,15 +1487,21 @@ export default {
 }
 
 .advanced-filter {
-	padding-top: 20rpx;
-	border-top: 1rpx solid rgba(255, 183, 77, 0.3);
+	padding-top: 16rpx;
+	border-top: 1rpx solid rgba(255, 183, 77, 0.2);
+	margin-top: 16rpx;
+}
+
+.advanced-filter .filter-item {
+	margin-bottom: 16rpx;
 }
 
 .price-filter .price-range-container {
-	background: rgba(255, 255, 255, 0.5);
-	border-radius: 15rpx;
-	padding: 20rpx;
-	margin-top: 10rpx;
+	background: rgba(255, 255, 255, 0.7);
+	border: 1rpx solid rgba(255, 183, 77, 0.2);
+	border-radius: 12rpx;
+	padding: 16rpx;
+	margin-top: 8rpx;
 }
 
 .price-range-slider {

@@ -3,10 +3,10 @@ export default {
 	// 获取菜单数据
 	getMenuList() {
 		const menuList = uni.getStorageSync('menuList');
-		if (menuList && menuList.length > 0) {
+		if (menuList !== null && menuList !== undefined) {
 			return menuList;
 		}
-		// 返回默认菜单
+		// 只有在从未设置过菜单时才返回默认菜单
 		return this.getDefaultMenu();
 	},
 
