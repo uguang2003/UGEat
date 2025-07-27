@@ -25,6 +25,10 @@
 					<text class="btn-icon">🔄</text>
 					<text class="btn-text">恢复默认</text>
 				</button>
+				<button class="btn clear-btn" @click="clearMenu">
+					<text class="btn-icon">🗑️</text>
+					<text class="btn-text">清空菜单</text>
+				</button>
 			</view>
 			<view class="toolbar-row">
 				<button class="btn batch-select-btn" @click="toggleSelectionMode" :class="{ 'active': isSelectionMode }">
@@ -56,7 +60,7 @@
 		<!-- 菜品列表 -->
 		<scroll-view class="menu-list" scroll-y>
 			<view v-if="filteredMenuList.length === 0" class="empty-tip">
-				暂无菜品，点击添加菜品开始管理你的粮库吧！
+				{{ menuList.length === 0 ? '菜单为空，点击"添加菜品"开始创建你的专属菜单，或点击"恢复默认"加载预设菜品！' : '暂无符合条件的菜品，请调整搜索条件或过滤设置。' }}
 			</view>
 			<view v-else>
 				<view class="menu-item" v-for="item in filteredMenuList" :key="item.id" :class="{ 
@@ -889,6 +893,29 @@ export default {
 				}
 			})
 		},
+
+		// 清空菜单
+		clearMenu() {
+			uni.showModal({
+				title: '确认清空',
+				content: '清空后所有菜品将被删除，确定继续吗？',
+				success: (res) => {
+					if (res.confirm) {
+						Storage.clearMenu()
+						this.loadMenuData()
+						
+						// 退出选择模式
+						this.isSelectionMode = false
+						this.selectedItems = []
+						
+						uni.showToast({
+							title: '清空成功',
+							icon: 'success'
+						})
+					}
+				}
+			})
+		},
 		
 		// 导入菜单
 		importMenu() {
@@ -1086,8 +1113,13 @@ export default {
 						this.loadMenuData()
 						
 						// 显示成功消息
+						let message = `成功删除${selectedCount}个菜品`
+						if (menuList.length === 0) {
+							message += '，菜单已清空'
+						}
+						
 						uni.showToast({
-							title: `成功删除${selectedCount}个菜品`,
+							title: message,
 							icon: 'success'
 						})
 						
@@ -1222,6 +1254,16 @@ export default {
 
 .reset-btn:active {
 	background: #545b62;
+}
+
+.clear-btn {
+	background: #dc3545;
+	color: white;
+	border-color: #dc3545;
+}
+
+.clear-btn:active {
+	background: #c82333;
 }
 
 /* 批量操作按钮 */

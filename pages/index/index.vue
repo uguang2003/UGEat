@@ -176,6 +176,14 @@
 					<text class="func-icon">📊</text>
 					<text class="func-text">数据统计</text>
 				</button>
+				<button class="func-btn" @click="shareToFriends">
+					<text class="func-icon">🔗</text>
+					<text class="func-text">分享给好友</text>
+				</button>
+				<button class="func-btn" @click="goToAbout">
+					<text class="func-icon">ℹ️</text>
+					<text class="func-text">关于我</text>
+				</button>
 			</view>
 			
 			<!-- 统计信息 -->
@@ -515,6 +523,14 @@ export default {
 		this.loadTodayCount()
 		this.autoSetMealTime()
 		this.setDefaultMealType()
+		
+		// #ifdef MP-WEIXIN
+		// 启用分享功能
+		uni.showShareMenu({
+			withShareTicket: true,
+			menus: ['shareAppMessage', 'shareTimeline']
+		})
+		// #endif
 	},
 	
 	onShow() {
@@ -1169,8 +1185,88 @@ export default {
 			uni.navigateTo({
 				url: '/pages/statistics/statistics'
 			})
+		},
+		
+		// 分享给好友
+		shareToFriends() {
+			// #ifdef MP-WEIXIN
+			// 微信小程序环境，显示分享选项
+			uni.showActionSheet({
+				itemList: ['分享给好友', '分享到朋友圈', '复制分享内容'],
+				success: (res) => {
+					if (res.tapIndex === 0) {
+						// 分享给好友 - 触发右上角分享
+						uni.showModal({
+							title: '分享提示',
+							content: '请点击右上角的"..."按钮进行分享',
+							showCancel: false
+						})
+					} else if (res.tapIndex === 1) {
+						// 分享到朋友圈
+						uni.showModal({
+							title: '分享提示', 
+							content: '请点击右上角的"..."按钮，选择分享到朋友圈',
+							showCancel: false
+						})
+					} else if (res.tapIndex === 2) {
+						// 复制分享内容
+						const shareText = 'UG吃啥 - 解决选择困难症\n还在纠结今天吃什么吗？快来试试UG吃啥，一键抽签帮你决定！'
+						uni.setClipboardData({
+							data: shareText,
+							success: () => {
+								uni.showToast({
+									title: '分享内容已复制',
+									icon: 'success'
+								})
+							}
+						})
+					}
+				}
+			})
+			// #endif
+			
+			// #ifndef MP-WEIXIN
+			// 非微信环境
+			const shareText = 'UG吃啥 - 解决选择困难症\n还在纠结今天吃什么吗？快来试试UG吃啥，一键抽签帮你决定！'
+			uni.setClipboardData({
+				data: shareText,
+				success: () => {
+					uni.showToast({
+						title: '分享内容已复制',
+						icon: 'success'
+					})
+				}
+			})
+			// #endif
+		},
+		
+		// 跳转到关于我页面
+		goToAbout() {
+			uni.navigateTo({
+				url: '/pages/about/about'
+			})
+		}
+	},
+	
+	// 微信分享生命周期方法
+	// #ifdef MP-WEIXIN
+	onShareAppMessage() {
+		return {
+			title: 'UG吃啥 - 解决选择困难症',
+			desc: '还在纠结今天吃什么吗？快来试试UG吃啥，一键抽签帮你决定！',
+			path: '/pages/index/index',
+			imageUrl: '/static/function.ico'
+		}
+	},
+	
+	onShareTimeline() {
+		return {
+			title: 'UG吃啥 - 让选择变得简单',
+			query: '',
+			imageUrl: '/static/function.ico'
 		}
 	}
+	// #endif
 }
 </script>
 
@@ -1641,8 +1737,10 @@ export default {
 /* 功能按钮 */
 .function-buttons {
 	display: flex;
-	gap: 20rpx;
+	justify-content: space-between;
+	gap: 15rpx;
 	margin-bottom: 40rpx;
+	padding: 0 10rpx;
 }
 
 .func-btn {
@@ -1650,23 +1748,27 @@ export default {
 	background: linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(255, 248, 225, 0.3));
 	border: 1rpx solid rgba(255, 183, 77, 0.4);
 	border-radius: 20rpx;
-	padding: 30rpx 20rpx;
+	padding: 25rpx 10rpx;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 10rpx;
+	gap: 8rpx;
 	backdrop-filter: blur(5rpx);
 	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+	min-height: 100rpx;
+	max-width: 160rpx;
 }
 
 .func-icon {
-	font-size: 36rpx;
+	font-size: 32rpx;
 }
 
 .func-text {
 	color: #5D4037;
-	font-size: 24rpx;
+	font-size: 22rpx;
 	font-weight: 600;
+	text-align: center;
+	line-height: 1.2;
 }
 
 .stats-preview {
