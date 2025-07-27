@@ -15,15 +15,15 @@
 			<view class="toolbar-row">
 				<button class="btn import-btn" @click="showImportModal = true">
 					<text class="btn-icon">📥</text>
-					<text class="btn-text">导入</text>
+					<text class="btn-text">导入菜单</text>
 				</button>
-				<button class="btn export-btn" @click="showExportModal = true">
+				<button class="btn export-btn" @click="exportMenu">
 					<text class="btn-icon">📤</text>
-					<text class="btn-text">导出</text>
+					<text class="btn-text">导出菜单</text>
 				</button>
 				<button class="btn reset-btn" @click="resetMenu">
 					<text class="btn-icon">🔄</text>
-					<text class="btn-text">重置</text>
+					<text class="btn-text">恢复默认</text>
 				</button>
 			</view>
 		</view>
@@ -34,6 +34,9 @@
 				   placeholder="搜索菜品..." 
 				   v-model="searchKeyword" 
 				   @input="onSearch" />
+			<button class="filter-btn" :class="{ 'active': showDisabledItems }" @click="toggleShowDisabled">
+				{{ showDisabledItems ? '显示全部' : '隐藏禁用' }}
+			</button>
 		</view>
 		
 		<!-- 菜品列表 -->
@@ -42,11 +45,16 @@
 				暂无菜品，点击添加菜品开始管理你的粮库吧！
 			</view>
 			<view v-else>
-				<view class="menu-item" v-for="item in filteredMenuList" :key="item.id">
+				<view class="menu-item" v-for="item in filteredMenuList" :key="item.id" :class="{ 'disabled': !item.enabled }">
 					<view class="item-content" @click="editMenuItem(item)">
 						<view class="item-header">
 							<text class="item-name">{{ item.name }}</text>
-							<text class="item-price">¥{{ item.price }}</text>
+							<view class="item-price-status">
+								<text class="item-price">¥{{ item.price }}</text>
+								<view class="status-indicator" :class="{ 'enabled': item.enabled, 'disabled': !item.enabled }">
+									{{ item.enabled ? '启用' : '禁用' }}
+								</view>
+							</view>
 						</view>
 						<view class="item-details">
 							<view class="item-meal-times">
@@ -61,6 +69,11 @@
 						</view>
 					</view>
 					<view class="item-actions">
+						<button class="action-btn toggle-btn" 
+								@click.stop="toggleItemStatus(item)"
+								:class="{ 'enabled': item.enabled, 'disabled': !item.enabled }">
+							<text class="action-icon">{{ item.enabled ? '✓' : '✗' }}</text>
+						</button>
 						<button class="action-btn edit-btn" @click.stop="editMenuItem(item)">
 							<text class="action-icon">✏️</text>
 						</button>
@@ -74,27 +87,34 @@
 		
 		<!-- 添加/编辑菜品弹窗 -->
 		<view class="modal-overlay" v-if="showAddModal || showEditModal" @click="hideModals">
-			<view class="modal" @click.stop>
+			<view class="modal extra-large-form" @click.stop>
 				<view class="modal-header">
 					<text class="modal-title">{{ showEditModal ? '编辑菜品' : '添加菜品' }}</text>
 					<text class="close-btn" @click="hideModals">×</text>
 				</view>
-				<view class="modal-body">
+				<view class="modal-body form-modal-body">
 					<!-- 菜品名称 -->
 					<view class="form-group">
 						<text class="form-label">菜品名称</text>
 						<input class="form-input" 
 							   placeholder="请输入菜品名称" 
-							   v-model="editingItem.name" />
+							   v-model="editingItem.name"
+							   maxlength="20"
+							   confirm-type="done"
+							   focus
+							   cursor-spacing="0" />
 					</view>
 					
 					<!-- 价格 -->
 					<view class="form-group">
 						<text class="form-label">价格</text>
 						<input class="form-input" 
-							   type="number" 
+							   type="digit" 
 							   placeholder="请输入价格" 
-							   v-model.number="editingItem.price" />
+							   v-model="editingItem.price"
+							   maxlength="10"
+							   confirm-type="done"
+							   cursor-spacing="0" />
 					</view>
 					
 					<!-- 用餐时段（多选） -->
@@ -148,12 +168,12 @@
 		
 		<!-- 标签选择弹窗 -->
 		<view class="modal-overlay" v-if="showTagModal" @click="showTagModal = false">
-			<view class="modal small" @click.stop>
+			<view class="modal extra-large-tag-modal" @click.stop>
 				<view class="modal-header">
 					<text class="modal-title">选择标签</text>
 					<text class="close-btn" @click="showTagModal = false">×</text>
 				</view>
-				<view class="modal-body">
+				<view class="modal-body tag-modal-body">
 					<view class="tag-grid">
 						<view class="tag-option" 
 							  v-for="tag in allTags" 
@@ -166,9 +186,12 @@
 					<view class="custom-tag-section">
 						<text class="section-title">自定义标签</text>
 						<view class="custom-tag-input">
-							<input class="form-input" 
+							<input class="form-input custom-tag-field" 
 								   placeholder="输入自定义标签" 
-								   v-model="customTag" 
+								   v-model="customTag"
+								   maxlength="10"
+								   confirm-type="done"
+								   :auto-focus="false"
 								   @confirm="addCustomTag" />
 							<button class="add-tag-btn" @click="addCustomTag">添加</button>
 						</view>
@@ -187,61 +210,45 @@
 					<text class="modal-title">UG秘制菜谱</text>
 					<text class="close-btn" @click="showRecipeModal = false">×</text>
 				</view>
-				<view class="recipe-tabs">
-					<view class="tab-header">
-						<view class="tab-item" 
-							  v-for="tab in recipeTabs" 
-							  :key="tab.key"
-							  :class="{ 'active': activeTab === tab.key }"
-							  @click="activeTab = tab.key">
-							{{ tab.name }}
+				<view class="recipe-content">
+					<!-- 左侧分类列表 -->
+					<view class="category-sidebar">
+						<view class="category-list">
+							<view class="category-item" 
+								  v-for="category in availableCategories" 
+								  :key="category.key"
+								  :class="{ 'active': selectedCategory === category.key }"
+								  @click="selectedCategory = category.key">
+								<text class="category-name">{{ category.name }}</text>
+								<text class="category-count">{{ category.count }}道菜</text>
+							</view>
 						</view>
 					</view>
-					<view class="tab-content">
-						<!-- 菜谱内容 -->
-						<scroll-view class="recipe-list" scroll-y v-if="activeTab !== 'history'">
-							<view class="recipe-category" v-for="(recipes, category) in recipesByCategory" :key="category">
-								<view class="category-header">
-									<text class="category-name">{{ getCategoryName(category) }}</text>
-									<text class="category-count">{{ recipes.length }}道菜</text>
-								</view>
-								<view class="recipe-items">
-									<view class="recipe-item" v-for="recipe in recipes" :key="recipe.name">
-										<view class="recipe-info">
-											<text class="recipe-name">{{ recipe.name }}</text>
+					
+					<!-- 右侧菜品列表 -->
+					<view class="recipe-main">
+						<view class="recipe-header">
+							<text class="recipe-title">{{ getCurrentCategoryName() }}</text>
+						</view>
+						<scroll-view class="recipe-list" scroll-y>
+							<view v-if="currentRecipes.length === 0" class="empty-tip">
+								该分类暂无菜品
+							</view>
+							<view v-else class="recipe-items">
+								<view class="recipe-item" v-for="recipe in currentRecipes" :key="recipe.name">
+									<view class="recipe-info">
+										<view class="recipe-name">{{ recipe.name }}</view>
+										<view class="recipe-details">
 											<text class="recipe-price">¥{{ recipe.price }}</text>
 											<text class="recipe-type">{{ recipe.type }}</text>
 										</view>
-										<button class="add-recipe-btn" @click="addRecipeToMenu(recipe)">
-											添加
-										</button>
+										<view class="recipe-tags" v-if="recipe.tags && recipe.tags.length > 0">
+											<text class="recipe-tag" v-for="tag in recipe.tags" :key="tag">{{ tag }}</text>
+										</view>
 									</view>
-								</view>
-							</view>
-						</scroll-view>
-						
-						<!-- 历史菜单 -->
-						<scroll-view class="history-list" scroll-y v-if="activeTab === 'history'">
-							<view v-if="menuHistory.length === 0" class="empty-tip">
-								暂无历史菜单
-							</view>
-							<view v-else>
-								<view class="history-item" v-for="(history, index) in menuHistory" :key="index">
-									<view class="history-header">
-										<text class="history-title">历史菜单 {{ index + 1 }}</text>
-										<text class="history-date">{{ history.date }}</text>
-									</view>
-									<view class="history-preview">
-										<text class="preview-text">{{ history.menuList.length }}道菜品</text>
-									</view>
-									<view class="history-actions">
-										<button class="restore-btn" @click="restoreHistoryMenu(history)">
-											恢复
-										</button>
-										<button class="delete-history-btn" @click="deleteHistory(index)">
-											删除
-										</button>
-									</view>
+									<button class="add-recipe-btn" @click="addRecipeToMenu(recipe)">
+										添加
+									</button>
 								</view>
 							</view>
 						</scroll-view>
@@ -249,30 +256,33 @@
 				</view>
 				<view class="modal-footer">
 					<button class="btn-cancel" @click="showRecipeModal = false">关闭</button>
-					<button class="btn-confirm" v-if="activeTab !== 'history'" @click="importCurrentCategory">
+					<button class="btn-confirm" @click="importCurrentCategory">
 						一键导入当前分类
 					</button>
 				</view>
 			</view>
 		</view>
 		
-		<!-- 导入导出弹窗 -->
+		<!-- 导入菜单弹窗 -->
 		<view class="modal-overlay" v-if="showImportModal" @click="showImportModal = false">
-			<view class="modal" @click.stop>
+			<view class="modal large import-export-modal" @click.stop>
 				<view class="modal-header">
 					<text class="modal-title">导入菜单</text>
 					<text class="close-btn" @click="showImportModal = false">×</text>
 				</view>
-				<view class="modal-body">
+				<view class="modal-body import-export-body">
 					<view class="import-tip">
-						请输入JSON格式的菜单数据，格式示例：
+						<text>请按照以下格式输入菜单数据（每行一个菜品）：</text>
 					</view>
 					<view class="import-example">
-						[{"name":"菜品名","mealTimes":["午餐"],"price":15,"type":"日常","tags":["快餐"]}]
+						<text>菜品名称,价格,餐食类型,用餐时段,菜品标签
+小笼包,8,日常,早餐,面食|营养
+蛋炒饭,15,日常,午餐|晚餐,快餐|营养</text>
 					</view>
-					<textarea class="import-textarea" 
-							  placeholder="粘贴菜单数据..." 
-							  v-model="importData"></textarea>
+					<textarea class="import-textarea large-textarea" 
+							  placeholder="请输入菜单数据..."
+							  v-model="importData">
+					</textarea>
 				</view>
 				<view class="modal-footer">
 					<button class="btn-cancel" @click="showImportModal = false">取消</button>
@@ -281,16 +291,21 @@
 			</view>
 		</view>
 		
+		<!-- 导出菜单弹窗 -->
 		<view class="modal-overlay" v-if="showExportModal" @click="showExportModal = false">
-			<view class="modal" @click.stop>
+			<view class="modal large import-export-modal" @click.stop>
 				<view class="modal-header">
 					<text class="modal-title">导出菜单</text>
 					<text class="close-btn" @click="showExportModal = false">×</text>
 				</view>
-				<view class="modal-body">
-					<textarea class="export-textarea" 
-							  readonly 
-							  :value="exportData"></textarea>
+				<view class="modal-body import-export-body">
+					<view class="import-tip">
+						<text>复制以下纯文本数据保存到文件：</text>
+					</view>
+					<textarea class="export-textarea large-textarea" 
+							  :value="exportData"
+							  readonly>
+					</textarea>
 				</view>
 				<view class="modal-footer">
 					<button class="btn-cancel" @click="showExportModal = false">关闭</button>
@@ -375,6 +390,7 @@ export default {
 			menuList: [],
 			filteredMenuList: [],
 			searchKeyword: '',
+			showDisabledItems: true, // 是否显示禁用的菜品
 			
 			// 弹窗状态
 			showAddModal: false,
@@ -384,6 +400,10 @@ export default {
 			showImportModal: false,
 			showExportModal: false,
 			
+			// 导入导出数据
+			importData: '',
+			exportData: '',
+			
 			// 编辑状态
 			editingItem: {
 				id: null,
@@ -391,7 +411,8 @@ export default {
 				mealTimes: [],
 				price: 0,
 				type: '日常',
-				tags: []
+				tags: [],
+				enabled: true
 			},
 			
 			// 选项数据
@@ -401,55 +422,79 @@ export default {
 			customTag: '',
 			
 			// 菜谱相关
-			activeTab: 'breakfast',
-			recipeTabs: [
-				{ key: 'breakfast', name: '早餐' },
-				{ key: 'lunch', name: '午餐' },
-				{ key: 'dinner', name: '晚餐' },
-				{ key: 'latenight', name: '夜宵' },
-				{ key: 'snacks', name: '零食' },
-				{ key: 'history', name: '历史菜单' }
-			],
-			recipeData: recipeData,
-			menuHistory: [],
-			
-			// 导入导出
-			importData: '',
-			exportData: ''
+			selectedCategory: 'breakfast',
+			recipeData: recipeData
 		}
 	},
 	
 	computed: {
-		recipesByCategory() {
-			if (this.activeTab === 'history') return {}
-			return { [this.activeTab]: this.recipeData[this.activeTab] || [] }
+		// 获取所有可用的分类（从菜谱数据中读取）
+		availableCategories() {
+			const categories = []
+			const categoryMap = {
+				'breakfast': '早餐',
+				'lunch': '午餐', 
+				'dinner': '晚餐',
+				'latenight': '夜宵',
+				'snacks': '零食'
+			}
+			
+			Object.keys(this.recipeData).forEach(key => {
+				if (this.recipeData[key] && this.recipeData[key].length > 0) {
+					categories.push({
+						key: key,
+						name: categoryMap[key] || key,
+						count: this.recipeData[key].length
+					})
+				}
+			})
+			
+			return categories
+		},
+		
+		// 当前选中分类的菜品
+		currentRecipes() {
+			return this.recipeData[this.selectedCategory] || []
 		}
 	},
 	
 	onLoad() {
 		this.loadMenuData()
 		this.loadCustomTags()
-		this.loadMenuHistory()
 	},
 	
 	methods: {
 		// 加载菜单数据
 		loadMenuData() {
 			this.menuList = Storage.getMenuList()
-			this.filteredMenuList = [...this.menuList]
+			this.onSearch() // 使用过滤逻辑而不是直接复制
 		},
 		
 		// 搜索
 		onSearch() {
+			let filteredList = this.menuList
+			
+			// 根据enabled状态过滤
+			if (!this.showDisabledItems) {
+				filteredList = filteredList.filter(item => item.enabled)
+			}
+			
+			// 根据关键词过滤
 			if (!this.searchKeyword.trim()) {
-				this.filteredMenuList = [...this.menuList]
+				this.filteredMenuList = [...filteredList]
 			} else {
 				const keyword = this.searchKeyword.toLowerCase()
-				this.filteredMenuList = this.menuList.filter(item => {
+				this.filteredMenuList = filteredList.filter(item => {
 					return item.name.toLowerCase().includes(keyword) ||
 						   (item.tags && item.tags.some(tag => tag.toLowerCase().includes(keyword)))
 				})
 			}
+		},
+		
+		// 切换显示禁用菜品
+		toggleShowDisabled() {
+			this.showDisabledItems = !this.showDisabledItems
+			this.onSearch() // 重新过滤
 		},
 		
 		// 显示添加菜品弹窗
@@ -466,9 +511,22 @@ export default {
 				mealTimes: [...(item.mealTimes || [])],
 				price: item.price,
 				type: item.type || '日常',
-				tags: [...(item.tags || [])]
+				tags: [...(item.tags || [])],
+				enabled: item.enabled !== false
 			}
 			this.showEditModal = true
+		},
+		
+		// 切换菜品启用状态
+		toggleItemStatus(item) {
+			item.enabled = !item.enabled
+			Storage.updateMenuItem(item)
+			this.loadMenuData()
+			
+			uni.showToast({
+				title: item.enabled ? '菜品已启用' : '菜品已禁用',
+				icon: 'success'
+			})
 		},
 		
 		// 删除菜品
@@ -499,7 +557,9 @@ export default {
 				return
 			}
 			
-			if (!this.editingItem.price || this.editingItem.price <= 0) {
+			// 确保价格是数字类型
+			const price = parseFloat(this.editingItem.price) || 0
+			if (price <= 0) {
 				uni.showToast({
 					title: '请输入正确的价格',
 					icon: 'none'
@@ -514,6 +574,9 @@ export default {
 				})
 				return
 			}
+			
+			// 确保价格是数字类型
+			this.editingItem.price = price
 			
 			if (this.showEditModal) {
 				// 编辑
@@ -543,7 +606,8 @@ export default {
 				mealTimes: [],
 				price: 0,
 				type: '日常',
-				tags: []
+				tags: [],
+				enabled: true
 			}
 		},
 		
@@ -616,6 +680,11 @@ export default {
 			return names[category] || category
 		},
 		
+		// 获取当前分类名称
+		getCurrentCategoryName() {
+			return this.getCategoryName(this.selectedCategory)
+		},
+		
 		// 添加菜谱到菜单
 		addRecipeToMenu(recipe) {
 			const newItem = {
@@ -623,7 +692,8 @@ export default {
 				mealTimes: recipe.mealTimes || [],
 				price: recipe.price,
 				type: recipe.type,
-				tags: recipe.tags || []
+				tags: recipe.tags || [],
+				enabled: true
 			}
 			
 			Storage.addMenuItem(newItem)
@@ -637,82 +707,44 @@ export default {
 		
 		// 一键导入当前分类
 		importCurrentCategory() {
-			this.saveCurrentMenuToHistory()
+			const recipes = this.currentRecipes || []
 			
-			const recipes = this.recipeData[this.activeTab] || []
-			
-			// 清空当前菜单
-			Storage.setMenuList([])
-			
-			// 导入当前分类的所有菜品
-			recipes.forEach(recipe => {
-				const newItem = {
-					name: recipe.name,
-					mealTimes: recipe.mealTimes || [],
-					price: recipe.price,
-					type: recipe.type,
-					tags: recipe.tags || []
-				}
-				Storage.addMenuItem(newItem)
-			})
-			
-			this.loadMenuData()
-			this.showRecipeModal = false
-			
-			uni.showToast({
-				title: `成功导入${recipes.length}道菜品`,
-				icon: 'success'
-			})
-		},
-		
-		// 保存当前菜单到历史
-		saveCurrentMenuToHistory() {
-			if (this.menuList.length === 0) return
-			
-			const history = {
-				date: new Date().toLocaleString(),
-				menuList: [...this.menuList]
+			if (recipes.length === 0) {
+				uni.showToast({
+					title: '该分类暂无菜品',
+					icon: 'none'
+				})
+				return
 			}
 			
-			this.menuHistory.unshift(history)
-			
-			// 只保留最近10个历史
-			if (this.menuHistory.length > 10) {
-				this.menuHistory = this.menuHistory.slice(0, 10)
-			}
-			
-			uni.setStorageSync('menuHistory', this.menuHistory)
-		},
-		
-		// 加载菜单历史
-		loadMenuHistory() {
-			this.menuHistory = uni.getStorageSync('menuHistory') || []
-		},
-		
-		// 恢复历史菜单
-		restoreHistoryMenu(history) {
 			uni.showModal({
-				title: '确认恢复',
-				content: '恢复历史菜单将替换当前菜单，确定继续吗？',
+				title: '确认导入',
+				content: `确定要导入${recipes.length}个${this.getCurrentCategoryName()}菜品吗？`,
 				success: (res) => {
 					if (res.confirm) {
-						this.saveCurrentMenuToHistory()
-						Storage.setMenuList(history.menuList)
+						// 导入当前分类的所有菜品
+						recipes.forEach(recipe => {
+							const newItem = {
+								name: recipe.name,
+								mealTimes: recipe.mealTimes || [],
+								price: recipe.price,
+								type: recipe.type,
+								tags: recipe.tags || [],
+								enabled: true
+							}
+							Storage.addMenuItem(newItem)
+						})
+						
 						this.loadMenuData()
+						this.showRecipeModal = false
 						
 						uni.showToast({
-							title: '恢复成功',
+							title: `成功导入${recipes.length}个菜品`,
 							icon: 'success'
 						})
 					}
 				}
 			})
-		},
-		
-		// 删除历史
-		deleteHistory(index) {
-			this.menuHistory.splice(index, 1)
-			uni.setStorageSync('menuHistory', this.menuHistory)
 		},
 		
 		// 重置菜单
@@ -722,7 +754,6 @@ export default {
 				content: '重置后将恢复默认菜单，确定继续吗？',
 				success: (res) => {
 					if (res.confirm) {
-						this.saveCurrentMenuToHistory()
 						Storage.resetToDefault()
 						this.loadMenuData()
 						
@@ -746,26 +777,46 @@ export default {
 			}
 			
 			try {
-				const data = JSON.parse(this.importData)
-				if (!Array.isArray(data)) {
-					throw new Error('数据格式错误')
-				}
+				const lines = this.importData.split('\n').filter(line => line.trim())
+				const data = []
 				
-				// 验证数据格式
-				for (let item of data) {
-					if (!item.name || !item.mealTimes || !item.price || !item.type) {
-						throw new Error('数据字段不完整')
+				// 跳过标题行（如果有）
+				const startIndex = lines[0].includes('菜品名称') ? 1 : 0
+				
+				for (let i = startIndex; i < lines.length; i++) {
+					const parts = lines[i].split(',')
+					if (parts.length >= 4) {
+						const name = parts[0].trim()
+						const price = parseFloat(parts[1]) || 0
+						const type = parts[2].trim() || '日常'
+						const mealTimes = parts[3] ? parts[3].split('|').map(tag => tag.trim()).filter(tag => tag) : []
+						const tags = parts[4] ? parts[4].split('|').map(tag => tag.trim()).filter(tag => tag) : []
+						
+						if (name) {
+							data.push({
+								id: Date.now() + i,
+								name,
+								price,
+								type,
+								mealTimes: mealTimes.length > 0 ? mealTimes : ['午餐'],
+								tags: tags.length > 0 ? tags : [],
+								enabled: true
+							})
+						}
 					}
 				}
 				
-				this.saveCurrentMenuToHistory()
+				if (data.length === 0) {
+					throw new Error('没有有效的菜品数据')
+				}
+				
 				Storage.setMenuList(data)
 				this.loadMenuData()
 				this.showImportModal = false
 				this.importData = ''
 				
 				uni.showToast({
-					title: '导入成功',
+					title: `成功导入${data.length}个菜品`,
 					icon: 'success'
 				})
 			} catch (error) {
@@ -778,7 +829,14 @@ export default {
 		
 		// 导出菜单
 		exportMenu() {
-			this.exportData = JSON.stringify(this.menuList, null, 2)
+			let text = '菜品名称,价格,餐食类型,用餐时段,菜品标签\n'
+			this.menuList.forEach(item => {
+				const mealTimes = item.mealTimes ? item.mealTimes.join('|') : ''
+				const tags = item.tags ? item.tags.join('|') : ''
+				text += `${item.name},${item.price},${item.type},${mealTimes},${tags}\n`
+			})
+			this.exportData = text
+			this.showExportModal = true
 		},
 		
 		// 复制导出数据
@@ -787,19 +845,24 @@ export default {
 				data: this.exportData,
 				success: () => {
 					uni.showToast({
-						title: '复制成功',
+						title: '已复制到剪贴板',
 						icon: 'success'
 					})
+					this.showExportModal = false
 				}
 			})
-		}
-	},
-	
-	watch: {
-		showExportModal(val) {
-			if (val) {
-				this.exportMenu()
+		},
+		
+		// 获取分类名称
+		getCategoryName(category) {
+			const names = {
+				breakfast: '早餐',
+				lunch: '午餐', 
+				dinner: '晚餐',
+				latenight: '夜宵',
+				snacks: '零食'
 			}
+			return names[category] || category
 		}
 	}
 }
@@ -807,24 +870,32 @@ export default {
 
 <style scoped>
 .container {
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	background: #f5f5f5;
 	min-height: 100vh;
 	padding: 20rpx;
 }
 
 /* 工具栏 */
 .toolbar {
-	background: white;
-	border-radius: 20rpx;
-	padding: 30rpx;
+	background: #ffffff;
+	border-radius: 12rpx;
+	padding: 20rpx;
 	margin-bottom: 20rpx;
-	box-shadow: 0 8rpx 30rpx rgba(0, 0, 0, 0.1);
+	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
+}
+
+.toolbar-main {
+	display: flex;
+	gap: 12rpx;
+	flex-wrap: wrap;
+	justify-content: space-between;
 }
 
 .toolbar-row {
 	display: flex;
-	gap: 20rpx;
-	margin-bottom: 20rpx;
+	gap: 12rpx;
+	margin-bottom: 12rpx;
+	width: 100%;
 }
 
 .toolbar-row:last-child {
@@ -833,98 +904,171 @@ export default {
 
 .btn {
 	flex: 1;
-	background: linear-gradient(135deg, #FF6B6B, #FF8E53);
-	border: none;
-	border-radius: 15rpx;
-	padding: 20rpx;
+	min-width: 100rpx;
+	background: #f8f9fa;
+	border: 1rpx solid #e9ecef;
+	border-radius: 8rpx;
+	padding: 12rpx 8rpx;
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
 	align-items: center;
-	gap: 8rpx;
-	color: white;
+	justify-content: center;
+	gap: 6rpx;
+	color: #495057;
 	font-size: 24rpx;
-	box-shadow: 0 4rpx 15rpx rgba(255, 107, 107, 0.3);
-	transition: all 0.3s ease;
+	transition: all 0.2s ease;
+	white-space: nowrap;
 }
 
 .btn:active {
-	transform: translateY(2rpx);
-	box-shadow: 0 2rpx 10rpx rgba(255, 107, 107, 0.4);
+	transform: scale(0.96);
+	background: #e9ecef;
 }
 
 .btn-icon {
-	font-size: 32rpx;
+	font-size: 20rpx;
+	line-height: 1;
+	flex-shrink: 0;
 }
 
 .btn-text {
-	font-size: 22rpx;
-	font-weight: 600;
+	font-size: 20rpx;
+	font-weight: 500;
 }
 
-.recipe-btn {
-	background: linear-gradient(135deg, #4ECDC4, #44A08D);
-	box-shadow: 0 4rpx 15rpx rgba(78, 205, 196, 0.3);
+.add-btn {
+	background: #007bff;
+	color: white;
+	border-color: #007bff;
+}
+
+.add-btn:active {
+	background: #0056b3;
 }
 
 .import-btn {
-	background: linear-gradient(135deg, #45B7D1, #96C93D);
-	box-shadow: 0 4rpx 15rpx rgba(69, 183, 209, 0.3);
+	background: #28a745;
+	color: white;
+	border-color: #28a745;
+}
+
+.import-btn:active {
+	background: #1e7e34;
 }
 
 .export-btn {
-	background: linear-gradient(135deg, #F093FB, #F5576C);
-	box-shadow: 0 4rpx 15rpx rgba(240, 147, 251, 0.3);
+	background: #17a2b8;
+	color: white;
+	border-color: #17a2b8;
+}
+
+.export-btn:active {
+	background: #117a8b;
+}
+
+.recipe-btn {
+	background: #ffc107;
+	color: #212529;
+	border-color: #ffc107;
+}
+
+.recipe-btn:active {
+	background: #e0a800;
 }
 
 .reset-btn {
-	background: linear-gradient(135deg, #FD79A8, #FDCB6E);
-	box-shadow: 0 4rpx 15rpx rgba(253, 121, 168, 0.3);
+	background: #6c757d;
+	color: white;
+	border-color: #6c757d;
+}
+
+.reset-btn:active {
+	background: #545b62;
 }
 
 /* 搜索栏 */
 .search-bar {
-	background: white;
-	border-radius: 20rpx;
-	padding: 20rpx 30rpx;
+	background: #ffffff;
+	border-radius: 12rpx;
+	padding: 8rpx 20rpx;
 	margin-bottom: 20rpx;
-	box-shadow: 0 8rpx 30rpx rgba(0, 0, 0, 0.1);
+	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
+	display: flex;
+	align-items: center;
+	gap: 20rpx;
 }
 
 .search-input {
-	width: 100%;
-	padding: 20rpx 0;
+	flex: 1;
+	padding: 16rpx 0;
 	font-size: 28rpx;
 	border: none;
 	background: transparent;
+	color: #495057;
+}
+
+.search-input::placeholder {
+	color: #adb5bd;
+}
+
+/* 过滤按钮 */
+.filter-btn {
+	background: #f8f9fa;
+	border: 1rpx solid #e9ecef;
+	border-radius: 8rpx;
+	padding: 12rpx 20rpx;
+	font-size: 24rpx;
+	color: #495057;
+	transition: all 0.2s ease;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.filter-btn.active {
+	background: #007bff;
+	color: white;
+	border-color: #007bff;
+}
+
+.filter-btn:active {
+	transform: scale(0.96);
 }
 
 /* 菜品列表 */
 .menu-list {
-	height: calc(100vh - 400rpx);
+	height: calc(100vh - 460rpx);
 }
 
 .empty-tip {
 	text-align: center;
 	padding: 100rpx 20rpx;
-	color: white;
+	color: #6c757d;
 	font-size: 28rpx;
+	background: #ffffff;
+	border-radius: 12rpx;
+	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
 }
 
 .menu-item {
-	background: white;
-	border-radius: 20rpx;
-	margin-bottom: 20rpx;
-	padding: 30rpx;
+	background: #ffffff;
+	border-radius: 12rpx;
+	margin-bottom: 16rpx;
+	padding: 24rpx;
 	display: flex;
 	justify-content: space-between;
-	align-items: center;
-	box-shadow: 0 8rpx 30rpx rgba(0, 0, 0, 0.1);
-	transition: all 0.3s ease;
+	align-items: flex-start;
+	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
+	transition: all 0.2s ease;
+	border: 1rpx solid #e9ecef;
+}
+
+.menu-item.disabled {
+	opacity: 0.6;
+	background: #f8f9fa;
 }
 
 .menu-item:active {
-	transform: translateY(-2rpx);
-	box-shadow: 0 12rpx 40rpx rgba(0, 0, 0, 0.15);
+	transform: scale(0.98);
 }
 
 .item-content {
@@ -944,10 +1088,33 @@ export default {
 	color: #333;
 }
 
+.item-price-status {
+	display: flex;
+	align-items: center;
+	gap: 10rpx;
+}
+
 .item-price {
 	font-size: 28rpx;
 	font-weight: 600;
-	color: #FF6B6B;
+	color: #007bff;
+}
+
+.status-indicator {
+	font-size: 20rpx;
+	padding: 4rpx 8rpx;
+	border-radius: 8rpx;
+	font-weight: 600;
+}
+
+.status-indicator.enabled {
+	background: #4CAF50;
+	color: white;
+}
+
+.status-indicator.disabled {
+	background: #FF5722;
+	color: white;
 }
 
 .item-details {
@@ -963,16 +1130,16 @@ export default {
 }
 
 .meal-time-tag {
-	background: linear-gradient(135deg, #667eea, #764ba2);
+	background: #007bff;
 	color: white;
 	font-size: 20rpx;
 	padding: 4rpx 10rpx;
-	border-radius: 10rpx;
+	border-radius: 6rpx;
 }
 
 .item-type {
 	font-size: 24rpx;
-	color: #4ECDC4;
+	color: #28a745;
 	font-weight: 500;
 }
 
@@ -983,45 +1150,60 @@ export default {
 }
 
 .tag {
-	background: rgba(255, 107, 107, 0.1);
-	color: #FF6B6B;
+	background: #e9ecef;
+	color: #495057;
 	font-size: 20rpx;
 	padding: 4rpx 10rpx;
-	border-radius: 8rpx;
-	border: 1rpx solid rgba(255, 107, 107, 0.2);
+	border-radius: 6rpx;
+	border: 1rpx solid #dee2e6;
 }
 
 .item-actions {
 	display: flex;
 	flex-direction: column;
-	gap: 15rpx;
+	gap: 8rpx;
 	margin-left: 20rpx;
 }
 
 .action-btn {
-	width: 60rpx;
-	height: 60rpx;
+	width: 44rpx;
+	height: 44rpx;
 	border: none;
-	border-radius: 50%;
+	border-radius: 8rpx;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 24rpx;
-	transition: all 0.3s ease;
+	font-size: 16rpx;
+	transition: all 0.2s ease;
+	box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.1);
+}
+
+.toggle-btn.enabled {
+	background: #28a745;
+	color: white;
+}
+
+.toggle-btn.disabled {
+	background: #dc3545;
+	color: white;
 }
 
 .edit-btn {
-	background: linear-gradient(135deg, #4ECDC4, #44A08D);
+	background: #007bff;
 	color: white;
 }
 
 .delete-btn {
-	background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+	background: #6c757d;
 	color: white;
 }
 
 .action-btn:active {
-	transform: scale(0.9);
+	transform: scale(0.92);
+}
+
+.action-icon {
+	font-size: 18rpx;
 }
 
 /* 弹窗样式 */
@@ -1039,12 +1221,13 @@ export default {
 }
 
 .modal {
-	background: white;
+	background: linear-gradient(135deg, #fff 0%, #fafafa 100%);
 	width: 90%;
 	max-width: 600rpx;
 	border-radius: 20rpx;
 	overflow: hidden;
 	max-height: 80vh;
+	box-shadow: 0 20rpx 60rpx rgba(0, 0, 0, 0.3);
 }
 
 .modal.large {
@@ -1052,13 +1235,22 @@ export default {
 	height: 80vh;
 }
 
+.modal.large-form {
+	max-width: 600rpx;
+	max-height: 90vh;
+}
+
 .modal.small {
 	max-width: 500rpx;
 }
 
+.form-modal-body {
+	max-height: none;
+	overflow: visible;
+}
+
 .modal-header {
-	background: linear-gradient(135deg, #667eea, #764ba2);
-	color: white;
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
 	padding: 30rpx;
 	display: flex;
 	justify-content: space-between;
@@ -1068,11 +1260,26 @@ export default {
 .modal-title {
 	font-size: 32rpx;
 	font-weight: bold;
+	color: white;
 }
 
 .close-btn {
 	font-size: 40rpx;
-	cursor: pointer;
+	color: white;
+	background: none;
+	border: none;
+	padding: 0;
+	width: 60rpx;
+	height: 60rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	transition: background 0.3s ease;
+}
+
+.close-btn:active {
+	background: rgba(255, 255, 255, 0.2);
 }
 
 .modal-body {
@@ -1138,8 +1345,8 @@ export default {
 }
 
 .checkbox-item.active, .radio-item.active {
-	background: #667eea;
-	border-color: #667eea;
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
+	border-color: #FF8A65;
 	color: white;
 }
 
@@ -1186,21 +1393,25 @@ export default {
 
 .btn-cancel, .btn-confirm {
 	padding: 24rpx 48rpx;
-	border-radius: 12rpx;
+	border-radius: 15rpx;
 	font-size: 28rpx;
 	border: none;
-	cursor: pointer;
+	font-weight: 600;
+	transition: all 0.3s ease;
 }
 
 .btn-cancel {
-	background: #f8f9fa;
-	border: 2rpx solid #e9ecef;
-	color: #666;
+	background: linear-gradient(135deg, #A5A5A5, #9E9E9E);
+	color: white;
 }
 
 .btn-confirm {
-	background: #667eea;
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
 	color: white;
+}
+
+.btn-cancel:active, .btn-confirm:active {
+	transform: scale(0.95);
 }
 
 /* 标签选择弹窗 */
@@ -1224,8 +1435,8 @@ export default {
 }
 
 .tag-option.selected {
-	background: #667eea;
-	border-color: #667eea;
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
+	border-color: #FF8A65;
 	color: white;
 }
 
@@ -1247,13 +1458,18 @@ export default {
 }
 
 .add-tag-btn {
-	background: #667eea;
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
 	color: white;
 	border: none;
-	border-radius: 12rpx;
+	border-radius: 15rpx;
 	padding: 24rpx 30rpx;
 	font-size: 26rpx;
 	white-space: nowrap;
+	transition: all 0.3s ease;
+}
+
+.add-tag-btn:active {
+	transform: scale(0.95);
 }
 
 /* 菜谱弹窗 */
@@ -1262,203 +1478,293 @@ export default {
 	flex-direction: column;
 }
 
-.recipe-tabs {
+.recipe-content {
+	flex: 1;
+	display: flex;
+	height: 500rpx;
+	overflow: hidden;
+}
+
+/* 左侧分类栏 */
+.category-sidebar {
+	width: 200rpx;
+	border-right: 1rpx solid #e9ecef;
+	background: #f8f9fa;
+}
+
+.category-list {
+	height: 100%;
+	overflow-y: auto;
+}
+
+.category-item {
+	padding: 20rpx 16rpx;
+	border-bottom: 1rpx solid #e9ecef;
+	cursor: pointer;
+	transition: background 0.2s ease;
+}
+
+.category-item:active {
+	background: #e9ecef;
+}
+
+.category-item.active {
+	background: #007bff;
+	color: white;
+}
+
+.category-name {
+	font-size: 24rpx;
+	font-weight: 500;
+	margin-bottom: 4rpx;
+}
+
+.category-count {
+	font-size: 20rpx;
+	opacity: 0.7;
+}
+
+/* 右侧菜品区域 */
+.recipe-main {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
 }
 
-.tab-header {
-	display: flex;
-	background: #f8f9fa;
-	border-bottom: 1rpx solid #e9ecef;
-}
-
-.tab-item {
-	flex: 1;
+.recipe-header {
 	padding: 20rpx;
-	text-align: center;
-	font-size: 26rpx;
-	color: #666;
-	cursor: pointer;
-	transition: all 0.3s ease;
-}
-
-.tab-item.active {
-	background: white;
-	color: #667eea;
-	border-bottom: 3rpx solid #667eea;
-}
-
-.tab-content {
-	flex: 1;
-	overflow: hidden;
-}
-
-.recipe-list, .history-list {
-	height: 400rpx;
-	padding: 20rpx;
-}
-
-.recipe-category {
-	margin-bottom: 30rpx;
-}
-
-.category-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 15rpx 0;
 	border-bottom: 1rpx solid #e9ecef;
-	margin-bottom: 15rpx;
+	background: #ffffff;
 }
 
-.category-name {
+.recipe-title {
 	font-size: 28rpx;
 	font-weight: 600;
 	color: #333;
 }
 
-.category-count {
-	font-size: 24rpx;
-	color: #999;
+.recipe-list {
+	flex: 1;
+	padding: 20rpx;
 }
 
 .recipe-items {
 	display: flex;
 	flex-direction: column;
-	gap: 15rpx;
+	gap: 16rpx;
 }
 
 .recipe-item {
 	display: flex;
 	justify-content: space-between;
-	align-items: center;
-	padding: 20rpx;
-	background: #f8f9fa;
-	border-radius: 12rpx;
+	align-items: flex-start;
+	padding: 16rpx;
+	background: #ffffff;
+	border-radius: 8rpx;
 	border: 1rpx solid #e9ecef;
+	transition: all 0.2s ease;
+	min-height: 100rpx;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.recipe-item:active {
+	transform: scale(0.98);
+	background: #f8f9fa;
 }
 
 .recipe-info {
 	flex: 1;
+	min-width: 0;
+	margin-right: 12rpx;
+	overflow: hidden;
 }
 
 .recipe-name {
-	font-size: 26rpx;
+	font-size: 24rpx;
 	color: #333;
-	margin-bottom: 8rpx;
+	margin-bottom: 6rpx;
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	line-height: 1.2;
+}
+
+.recipe-details {
+	display: flex;
+	gap: 12rpx;
+	margin-bottom: 6rpx;
 }
 
 .recipe-price {
 	font-size: 24rpx;
-	color: #FF6B6B;
-	margin-right: 15rpx;
+	color: #007bff;
+	font-weight: 600;
 }
 
 .recipe-type {
 	font-size: 24rpx;
-	color: #4ECDC4;
+	color: #6c757d;
+}
+
+.recipe-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6rpx;
+}
+
+.recipe-tag {
+	background: #e9ecef;
+	color: #495057;
+	font-size: 20rpx;
+	padding: 2rpx 8rpx;
+	border-radius: 4rpx;
 }
 
 .add-recipe-btn {
-	background: #667eea;
+	background: #28a745;
 	color: white;
 	border: none;
-	border-radius: 8rpx;
-	padding: 12rpx 20rpx;
-	font-size: 24rpx;
+	border-radius: 4rpx;
+	padding: 8rpx 12rpx;
+	font-size: 20rpx;
+	transition: all 0.2s ease;
+	white-space: nowrap;
+	flex-shrink: 0;
+	height: 60rpx;
+	min-width: 80rpx;
 }
 
-/* 历史菜单 */
-.history-item {
-	background: #f8f9fa;
-	border-radius: 12rpx;
-	padding: 20rpx;
-	margin-bottom: 15rpx;
-	border: 1rpx solid #e9ecef;
-}
-
-.history-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	margin-bottom: 10rpx;
-}
-
-.history-title {
-	font-size: 26rpx;
-	color: #333;
-	font-weight: 600;
-}
-
-.history-date {
-	font-size: 22rpx;
-	color: #999;
-}
-
-.history-preview {
-	margin-bottom: 15rpx;
-}
-
-.preview-text {
-	font-size: 24rpx;
-	color: #666;
-}
-
-.history-actions {
-	display: flex;
-	gap: 15rpx;
-}
-
-.restore-btn {
-	background: #4ECDC4;
-	color: white;
-	border: none;
-	border-radius: 8rpx;
-	padding: 10rpx 20rpx;
-	font-size: 24rpx;
-	flex: 1;
-}
-
-.delete-history-btn {
-	background: #FF6B6B;
-	color: white;
-	border: none;
-	border-radius: 8rpx;
-	padding: 10rpx 20rpx;
-	font-size: 24rpx;
-	flex: 1;
+.add-recipe-btn:active {
+	background: #1e7e34;
+	transform: scale(0.95);
 }
 
 /* 导入导出 */
 .import-tip {
 	font-size: 26rpx;
-	color: #666;
+	color: #333;
 	margin-bottom: 15rpx;
+	font-weight: 600;
 }
 
 .import-example {
-	background: #f8f9fa;
-	border: 1rpx solid #e9ecef;
-	border-radius: 8rpx;
-	padding: 15rpx;
+	background: rgba(255, 138, 101, 0.1);
+	border: 1rpx solid rgba(255, 138, 101, 0.3);
+	border-radius: 15rpx;
+	padding: 20rpx;
 	font-size: 22rpx;
 	color: #333;
 	margin-bottom: 20rpx;
 	font-family: monospace;
 	word-break: break-all;
+	line-height: 1.5;
 }
 
 .import-textarea, .export-textarea {
 	width: 100%;
-	height: 300rpx;
+	height: 400rpx;
 	padding: 20rpx;
-	border: 1rpx solid #e9ecef;
-	border-radius: 10rpx;
+	border: 2rpx solid rgba(255, 138, 101, 0.3);
+	border-radius: 15rpx;
 	font-size: 24rpx;
 	box-sizing: border-box;
 	font-family: monospace;
+	line-height: 1.4;
+	background: rgba(255, 255, 255, 0.8);
+	transition: border-color 0.3s ease;
+	text-align: left;
+	vertical-align: top;
+}
+
+.large-textarea {
+	height: 550rpx !important;
+}
+
+.import-export-modal {
+	height: 90vh;
+	max-height: 90vh;
+}
+
+.import-export-body {
+	display: flex;
+	flex-direction: column;
+	height: calc(90vh - 150rpx);
+	padding: 20rpx 30rpx;
+	overflow: hidden;
+}
+
+.import-export-body .import-tip {
+	margin-bottom: 15rpx;
+}
+
+.import-export-body .import-example {
+	margin-bottom: 20rpx;
+	flex-shrink: 0;
+}
+
+.import-export-body .large-textarea {
+	flex: 1;
+	height: auto !important;
+	min-height: 400rpx;
+	border: 1rpx solid #e9ecef;
+	border-radius: 8rpx;
+	padding: 20rpx;
+	font-size: 24rpx;
+	line-height: 1.5;
 	resize: none;
+	text-align: left;
+	vertical-align: top;
+}
+
+.import-textarea:focus, .export-textarea:focus {
+	border-color: #FF8A65;
+	outline: none;
+}
+
+/* 新增样式 */
+.modal.extra-large-form {
+	max-width: 750rpx;
+	width: 95%;
+	max-height: 95vh;
+}
+
+.modal.extra-large-form .modal-body {
+	max-height: 70vh;
+	overflow-y: auto;
+	padding: 30rpx;
+}
+
+.modal.large-tag-modal {
+	max-width: 650rpx;
+	width: 90%;
+	max-height: 85vh;
+}
+
+.modal.extra-large-tag-modal {
+	max-width: 750rpx;
+	width: 95%;
+	max-height: 90vh;
+}
+
+.tag-modal-body {
+	max-height: 65vh;
+	overflow-y: auto;
+	padding: 30rpx;
+}
+
+.form-modal-body {
+	max-height: none !important;
+	overflow: visible !important;
+}
+
+.custom-tag-field {
+	flex: 1;
+	margin-right: 15rpx;
+}
+
+.custom-tag-input .form-input {
+	margin-bottom: 0;
 }
 </style>

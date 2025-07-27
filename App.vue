@@ -1,13 +1,13 @@
 <script>
 	export default {
 		onLaunch: function() {
-			console.log('App Launch')
+			console.log('UG吃啥启动')
 		},
 		onShow: function() {
-			console.log('App Show')
+			console.log('UG吃啥展示')
 		},
 		onHide: function() {
-			console.log('App Hide')
+			console.log('UG吃啥隐藏')
 		}
 	}
 </script>

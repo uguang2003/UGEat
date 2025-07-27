@@ -43,11 +43,23 @@
 			<view class="button-area">
 				<button class="draw-btn" 
 						:class="{ 'loading': isDrawing, 'regret': isRegretMode }" 
-						@click="drawFood" 
-						:disabled="isDrawing">
+						@click="isDrawingActive ? stopDrawing() : drawFood()" 
+						:disabled="isDrawing && !isDrawingActive">
 					<text v-if="!isDrawing">{{ drawButtonText }}</text>
+					<text v-else-if="isDrawingActive">停止</text>
 					<text v-else>抽签中...</text>
 				</button>
+			</view>
+			
+			<!-- 随机菜品浮现效果 -->
+			<view class="floating-foods" v-if="isDrawingActive">
+				<view class="floating-food" 
+					  v-for="(food, index) in floatingFoods" 
+					  :key="index"
+					  :style="food.style"
+					  :class="food.class">
+					{{ food.name }}
+				</view>
 			</view>
 			
 			<!-- 筛选区域 -->
@@ -295,8 +307,14 @@ export default {
 			title: 'UG吃啥',
 			currentFood: null,
 			isDrawing: false,
+			isDrawingActive: false, // 新增：是否正在抽签动画中
 			isAnimating: false,
 			statusBarHeight: 0,
+			
+			// 浮现菜品效果
+			floatingFoods: [],
+			drawingInterval: null,
+			floatingInterval: null,
 			
 			// 弹窗控制
 			showConfirmModal: false,
@@ -418,6 +436,11 @@ export default {
 		this.setDefaultMealType()
 	},
 	
+	onShow() {
+		// 页面显示时重新加载菜单，确保启用状态是最新的
+		this.loadMenu()
+	},
+	
 	methods: {
 		getSystemInfo() {
 			const systemInfo = uni.getSystemInfoSync()
@@ -450,24 +473,13 @@ export default {
 		
 		async loadMenu() {
 			try {
-				const menu = await uni.getStorage({
-					key: 'ugeat_menu'
-				})
-				this.menuList = menu.data || []
-				
-				// 如果没有菜单数据，使用默认菜单而不是UG秘制菜谱
-				if (this.menuList.length === 0) {
-					// 使用storage.js中的默认菜单
-					const storage = await import('@/utils/storage.js')
-					this.menuList = storage.default.getDefaultMenu()
-					await this.saveMenu()
-				}
+				const storage = await import('@/utils/storage.js')
+				this.menuList = storage.default.getMenuList()
 			} catch (e) {
-				console.log('未找到菜单数据，使用默认菜单')
+				console.log('加载菜单失败', e)
 				// 使用storage.js中的默认菜单
 				const storage = await import('@/utils/storage.js')
 				this.menuList = storage.default.getDefaultMenu()
-				await this.saveMenu()
 			}
 		},
 		
@@ -499,9 +511,11 @@ export default {
 		getFilteredMenu() {
 			let filtered = [...this.menuList]
 			
+			// 只显示启用的菜品
+			filtered = filtered.filter(item => item.enabled === true)
+			
 			// 用餐时段筛选
 			if (this.selectedMealTime) {
-								console.log(`筛选用餐时段: ${this.selectedMealTime}`,filtered);
 				filtered = filtered.filter(item => 
 					item.mealTimes && item.mealTimes.includes(this.selectedMealTime)
 				)
@@ -560,29 +574,106 @@ export default {
 			}
 			
 			this.isDrawing = true
+			this.isDrawingActive = true
 			this.isAnimating = true
 			this.showDeliveryButtons = false
 			
-			// 模拟抽签动画
-			await new Promise(resolve => {
-				let count = 0
-				const interval = setInterval(() => {
-					const randomIndex = Math.floor(Math.random() * filteredMenu.length)
-					this.currentFood = filteredMenu[randomIndex]
-					count++
-					
-					if (count >= 10) {
-						clearInterval(interval)
-						resolve()
-					}
-				}, 100)
-			})
+			// 开始浮现菜品效果
+			this.startFloatingEffect(filteredMenu)
+			
+			// 开始抽签动画（不自动停止）
+			this.drawingInterval = setInterval(() => {
+				const randomIndex = Math.floor(Math.random() * filteredMenu.length)
+				this.currentFood = filteredMenu[randomIndex]
+			}, 100)
+		},
+		
+		stopDrawing() {
+			if (!this.isDrawingActive) return
+			
+			// 停止抽签动画
+			if (this.drawingInterval) {
+				clearInterval(this.drawingInterval)
+				this.drawingInterval = null
+			}
+			
+			// 停止浮现效果
+			this.stopFloatingEffect()
 			
 			this.isDrawing = false
+			this.isDrawingActive = false
 			this.isAnimating = false
 			
 			// 显示确认弹窗
 			this.showConfirmModal = true
+		},
+		
+		startFloatingEffect(filteredMenu) {
+			// 清空之前的浮现菜品
+			this.floatingFoods = []
+			
+			// 开始生成浮现菜品
+			this.floatingInterval = setInterval(() => {
+				if (this.floatingFoods.length < 8) { // 最多同时显示8个浮现菜品
+					const randomFood = filteredMenu[Math.floor(Math.random() * filteredMenu.length)]
+					const floatingFood = {
+						name: randomFood.name,
+						style: this.getRandomFloatingStyle(),
+						class: 'floating-in'
+					}
+					this.floatingFoods.push(floatingFood)
+					
+					// 3秒后移除
+					setTimeout(() => {
+						const index = this.floatingFoods.indexOf(floatingFood)
+						if (index > -1) {
+							this.floatingFoods[index].class = 'floating-out'
+							setTimeout(() => {
+								const removeIndex = this.floatingFoods.indexOf(floatingFood)
+								if (removeIndex > -1) {
+									this.floatingFoods.splice(removeIndex, 1)
+								}
+							}, 500)
+						}
+					}, 3000)
+				}
+			}, 300)
+		},
+		
+		stopFloatingEffect() {
+			if (this.floatingInterval) {
+				clearInterval(this.floatingInterval)
+				this.floatingInterval = null
+			}
+			
+			// 清空浮现菜品
+			setTimeout(() => {
+				this.floatingFoods = []
+			}, 1000)
+		},
+		
+		getRandomFloatingStyle() {
+			// 从中心点向外扩散的随机位置
+			const centerX = 50; // 中心X坐标百分比
+			const centerY = 50; // 中心Y坐标百分比
+			
+			// 随机角度和距离
+			const angle = Math.random() * 360; // 0-360度
+			const distance = Math.random() * 40 + 10; // 10-50的距离百分比
+			
+			// 计算最终位置
+			const left = centerX + Math.cos(angle * Math.PI / 180) * distance;
+			const top = centerY + Math.sin(angle * Math.PI / 180) * distance;
+			
+			const animationDuration = Math.random() * 2 + 2; // 2-4秒
+			const fontSize = Math.random() * 8 + 14; // 14-22px
+			
+			return {
+				left: `${Math.max(5, Math.min(95, left))}%`, // 限制在5%-95%范围内
+				top: `${Math.max(5, Math.min(95, top))}%`, // 限制在5%-95%范围内
+				fontSize: `${fontSize}px`,
+				animationDuration: `${animationDuration}s`
+			}
 		},
 		
 		async confirmFood() {
@@ -1793,5 +1884,64 @@ export default {
 
 .modal-btn:active {
 	transform: scale(0.95);
+}
+
+/* 浮现菜品效果 */
+.floating-foods {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	pointer-events: none;
+	z-index: 100;
+}
+
+.floating-food {
+	position: absolute;
+	color: #FF6B6B;
+	font-weight: bold;
+	text-shadow: 0 1rpx 3rpx rgba(0, 0, 0, 0.3);
+	white-space: nowrap;
+	opacity: 0.8;
+	transform: translate(-50%, -50%); /* 以元素中心为基准点 */
+}
+
+.floating-food.floating-in {
+	animation: floatingIn 3s ease-out forwards;
+}
+
+.floating-food.floating-out {
+	animation: floatingOut 0.5s ease-in forwards;
+}
+
+@keyframes floatingIn {
+	0% {
+		opacity: 0;
+		transform: scale(0.3) translate(-50%, -50%);
+	}
+	10% {
+		opacity: 1;
+		transform: scale(1.2) translate(-50%, -50%);
+	}
+	20% {
+		opacity: 0.8;
+		transform: scale(1) translate(-50%, -50%);
+	}
+	100% {
+		opacity: 0;
+		transform: scale(1) translate(-50%, -50%);
+	}
+}
+
+@keyframes floatingOut {
+	0% {
+		opacity: 0.8;
+		transform: scale(1) translate(-50%, -50%);
+	}
+	100% {
+		opacity: 0;
+		transform: scale(0.8) translate(-50%, -50%);
+	}
 }
 </style>
