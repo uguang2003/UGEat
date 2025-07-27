@@ -179,8 +179,10 @@
 							  v-for="tag in allTags" 
 							  :key="tag"
 							  :class="{ 'selected': editingItem.tags.includes(tag) }"
-							  @click="toggleTag(tag)">
+							  @click="toggleTag(tag)"
+							  @longpress="deleteCustomTag(tag)">
 							{{ tag }}
+							<text class="delete-tag-btn" v-if="isCustomTag(tag)" @click.stop="deleteCustomTag(tag)">×</text>
 						</view>
 					</view>
 					<view class="custom-tag-section">
@@ -657,7 +659,10 @@ export default {
 		
 		// 保存自定义标签
 		saveCustomTags() {
-			uni.setStorageSync('customTags', this.allTags)
+			// 只保存自定义标签，不包含默认标签
+			const defaultTags = ['辛辣', '清淡', '甜品', '海鲜', '烧烤', '快餐', '西式', '营养', '饮品', '面食', '异国', '日料', '酸甜']
+			const customTags = this.allTags.filter(tag => !defaultTags.includes(tag))
+			uni.setStorageSync('customTags', customTags)
 		},
 		
 		// 加载自定义标签
@@ -666,6 +671,100 @@ export default {
 			if (customTags && customTags.length > 0) {
 				this.allTags = [...new Set([...this.allTags, ...customTags])]
 			}
+		},
+		
+		// 判断是否为自定义标签
+		isCustomTag(tag) {
+			const defaultTags = ['辛辣', '清淡', '甜品', '海鲜', '烧烤', '快餐', '西式', '营养', '饮品', '面食', '异国', '日料', '酸甜']
+			return !defaultTags.includes(tag)
+		},
+		
+		// 删除自定义标签
+		deleteCustomTag(tag) {
+			if (!this.isCustomTag(tag)) {
+				uni.showToast({
+					title: '默认标签不能删除',
+					icon: 'none'
+				})
+				return
+			}
+			
+			// 暂时隐藏所有模态框以避免z-index冲突
+			const wasTagModalOpen = this.showTagModal
+			const wasAddModalOpen = this.showAddModal
+			const wasEditModalOpen = this.showEditModal
+			
+			this.showTagModal = false
+			this.showAddModal = false
+			this.showEditModal = false
+			
+			// 添加延迟确保UI更新完成
+			setTimeout(() => {
+				uni.showModal({
+					title: '确认删除',
+					content: `确定要删除标签"${tag}"吗？删除后所有菜品中的此标签也会被移除。`,
+					success: (res) => {
+						if (res.confirm) {
+							// 从allTags中删除
+							const index = this.allTags.indexOf(tag)
+							if (index > -1) {
+								this.allTags.splice(index, 1)
+							}
+							
+							// 从当前编辑项的标签中删除
+							const editIndex = this.editingItem.tags.indexOf(tag)
+							if (editIndex > -1) {
+								this.editingItem.tags.splice(editIndex, 1)
+							}
+							
+							// 从所有菜品中删除该标签
+							this.removeTagFromAllMenuItems(tag)
+							
+							// 保存更改
+							this.saveCustomTags()
+							
+							uni.showToast({
+								title: '删除成功',
+								icon: 'success'
+							})
+						}
+						
+						// 恢复模态框显示状态
+						setTimeout(() => {
+							if (wasTagModalOpen) {
+								this.showTagModal = true
+							}
+							if (wasAddModalOpen) {
+								this.showAddModal = true
+							}
+							if (wasEditModalOpen) {
+								this.showEditModal = true
+							}
+						}, 100)
+					}
+				})
+			}, 100)
+		},
+		
+		// 从所有菜品中删除指定标签
+		removeTagFromAllMenuItems(tag) {
+			// 从menuList中删除该标签
+			this.menuList.forEach(item => {
+				if (item.tags && item.tags.includes(tag)) {
+					const tagIndex = item.tags.indexOf(tag)
+					if (tagIndex > -1) {
+						item.tags.splice(tagIndex, 1)
+					}
+				}
+			})
+			
+			// 保存菜单数据
+			this.saveMenu()
+		},
+		
+		// 保存菜单数据到存储
+		saveMenu() {
+			Storage.setMenuList(this.menuList)
 		},
 		
 		// 获取分类名称
@@ -871,8 +970,9 @@ export default {
 <style scoped>
 .container {
 	background: #f5f5f5;
-	min-height: 100vh;
+	height: 100%;
 	padding: 20rpx;
+	overflow: hidden;
 }
 
 /* 工具栏 */
@@ -1036,7 +1136,7 @@ export default {
 
 /* 菜品列表 */
 .menu-list {
-	height: calc(100vh - 460rpx);
+	height: calc(100vh - 480rpx);
 }
 
 .empty-tip {
@@ -1217,7 +1317,7 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	z-index: 1000;
+	z-index: 9999;
 }
 
 .modal {
@@ -1430,12 +1530,30 @@ export default {
 	font-size: 26rpx;
 	transition: all 0.3s ease;
 	cursor: pointer;
+	position: relative;
 }
 
 .tag-option.selected {
 	background: linear-gradient(135deg, #FF8A65, #FFB74D);
 	border-color: #FF8A65;
 	color: white;
+}
+
+.delete-tag-btn {
+	position: absolute;
+	top: -8rpx;
+	right: -8rpx;
+	width: 32rpx;
+	height: 32rpx;
+	background: #FF5722;
+	color: white;
+	border-radius: 50%;
+	font-size: 20rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
+	box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.2);
 }
 
 .custom-tag-section {

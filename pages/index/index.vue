@@ -116,15 +116,24 @@
 					
 					<!-- 菜品标签筛选 -->
 					<view class="filter-item">
-						<text class="filter-label">菜品标签：</text>
-						<view class="tag-selector">
-							<text class="filter-tag small" 
-								  :class="{ 'active': selectedTags.includes(tag) }" 
-								  v-for="tag in foodTags" 
-								  :key="tag"
-								  @click="toggleFoodTag(tag)">
-								{{ tag }}
-							</text>
+						<text class="filter-label">🏷️ 菜品标签：</text>
+						<view class="tag-selector-improved" @click="showTagSelectorModal = true">
+							<view class="selected-tags-container" v-if="selectedTags.length > 0">
+								<view class="selected-tag-wrapper" v-for="tag in selectedTags" :key="tag">
+									<text class="selected-tag-improved">{{ tag }}</text>
+									<text class="tag-remove" @click.stop="toggleFoodTag(tag)">×</text>
+								</view>
+								<view class="tag-count-badge" v-if="selectedTags.length > 3">
+									+{{ selectedTags.length - 3 }}
+								</view>
+							</view>
+							<view class="placeholder-container" v-else>
+								<text class="placeholder-improved">点击选择标签</text>
+								<text class="placeholder-hint">可多选</text>
+							</view>
+							<view class="arrow-container">
+								<text class="arrow-improved">⚙️</text>
+							</view>
 						</view>
 					</view>
 					
@@ -295,6 +304,50 @@
 				</view>
 			</view>
 		</view>
+		
+		<!-- 标签选择弹窗 -->
+		<view class="confirm-modal" v-if="showTagSelectorModal" @click="showTagSelectorModal = false">
+			<view class="modal-content large tag-selector-modal" @click.stop>
+				<view class="modal-header">
+					<text class="modal-title">🏷️ 选择菜品标签</text>
+					<text class="close-btn" @click="showTagSelectorModal = false">×</text>
+				</view>
+				<view class="modal-body tag-selector-body">
+					<view class="selected-tags-preview" v-if="selectedTags.length > 0">
+						<text class="preview-label">已选择标签：</text>
+						<view class="selected-tags-list">
+							<view class="selected-tag-item" v-for="tag in selectedTags" :key="tag">
+								{{ tag }}
+								<text class="remove-tag" @click="toggleFoodTag(tag)">×</text>
+							</view>
+						</view>
+					</view>
+					<view class="available-tags-section">
+						<text class="section-label">可选标签：</text>
+						<view class="tag-grid-improved">
+							<view class="tag-option-improved" 
+								  v-for="tag in availableFoodTags" 
+								  :key="tag"
+								  :class="{ 'selected': selectedTags.includes(tag) }"
+								  @click="toggleFoodTag(tag)">
+								<text class="tag-text">{{ tag }}</text>
+								<view class="tag-check" v-if="selectedTags.includes(tag)">✓</view>
+							</view>
+						</view>
+					</view>
+				</view>
+				<view class="modal-footer">
+					<button class="modal-btn cancel-btn" @click="clearSelectedTags">
+						<text class="btn-icon">🗑️</text>
+						<text>清空</text>
+					</button>
+					<button class="modal-btn confirm-btn" @click="showTagSelectorModal = false">
+						<text class="btn-icon">✅</text>
+						<text>确定</text>
+					</button>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
@@ -321,6 +374,7 @@ export default {
 			showDeliveryModal: false,
 			showLocationModal: false,
 			showManualLocationModal: false,
+			showTagSelectorModal: false,
 			showDeliveryButtons: false,
 			rejectionCount: 0,
 			isRegretMode: false,
@@ -334,6 +388,9 @@ export default {
 			priceRange: [0, 200],
 			selectedMealTimeIndex: 0,
 			selectedMealTypeIndex: 0,
+			
+			// 标签更新触发器
+			tagUpdateTrigger: 0,
 			
 			// 双滑块拖拽状态
 			isDragging: false,
@@ -351,7 +408,6 @@ export default {
 			// 数据选项
 			mealTimes: ['自动', '早餐', '午餐', '晚餐', '夜宵', '零食'],
 			mealTypes: ['日常', '大餐'],
-			foodTags: ['辛辣', '清淡', '甜品', '海鲜', '烧烤', '快餐', '西式', '营养', '奶茶', '饮品', '面食', '异国', '日料', '酸甜'],
 			
 			// 菜单数据
 			menuList: [],
@@ -403,6 +459,29 @@ export default {
 			return ['不限', ...this.mealTypes]
 		},
 		
+		// 从菜单数据中获取所有可用标签
+		availableFoodTags() {
+			// 添加触发器依赖确保响应式更新
+			this.tagUpdateTrigger
+			
+			const allTags = new Set()
+			
+			// 从菜单数据中获取标签
+			this.menuList.forEach(item => {
+				if (item.tags && Array.isArray(item.tags)) {
+					item.tags.forEach(tag => allTags.add(tag))
+				}
+			})
+			
+			// 从自定义标签中获取标签
+			const customTags = uni.getStorageSync('customTags')
+			if (customTags && Array.isArray(customTags)) {
+				customTags.forEach(tag => allTags.add(tag))
+			}
+			
+			return Array.from(allTags).sort()
+		},
+		
 		// 双滑块样式计算属性
 		progressStyle() {
 			const minPercent = (this.priceRange[0] / 200) * 100
@@ -439,6 +518,11 @@ export default {
 	onShow() {
 		// 页面显示时重新加载菜单，确保启用状态是最新的
 		this.loadMenu()
+		// 触发标签更新
+		this.tagUpdateTrigger++
+		
+		// 调试：检查自定义标签
+		const customTags = uni.getStorageSync('customTags')
 	},
 	
 	methods: {
@@ -823,6 +907,11 @@ export default {
 			} else {
 				this.selectedTags.push(tag)
 			}
+		},
+		
+		// 清空选中的标签
+		clearSelectedTags() {
+			this.selectedTags = []
 		},
 		
 		// 双滑块拖拽方法
@@ -1630,11 +1719,19 @@ export default {
 	border: 2rpx solid rgba(255, 183, 77, 0.3);
 }
 
+.modal-content.large {
+	width: 90%;
+	max-width: 600rpx;
+}
+
 .modal-header {
 	background: linear-gradient(45deg, #FF8A65, #FF7043);
 	color: white;
 	padding: 30rpx;
 	text-align: center;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
 }
 
 .modal-title {
@@ -1862,28 +1959,402 @@ export default {
 
 .modal-btn {
 	flex: 1;
-	padding: 20rpx;
+	padding: 24rpx;
 	border-radius: 15rpx;
 	font-size: 28rpx;
-	border: none;
 	font-weight: 600;
+	border: none;
 	transition: all 0.3s ease;
 }
 
 .cancel-btn {
-	background: linear-gradient(45deg, #9E9E9E, #BDBDBD);
+	background: linear-gradient(135deg, #A5A5A5, #9E9E9E);
 	color: white;
-	box-shadow: 0 4rpx 12rpx rgba(158, 158, 158, 0.3);
 }
 
 .confirm-btn {
-	background: linear-gradient(45deg, #FF8A65, #FF7043);
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
 	color: white;
-	box-shadow: 0 4rpx 12rpx rgba(255, 138, 101, 0.4);
 }
 
 .modal-btn:active {
 	transform: scale(0.95);
+}
+
+.close-btn {
+	font-size: 40rpx;
+	color: white;
+	background: none;
+	border: none;
+	padding: 0;
+	width: 60rpx;
+	height: 60rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	transition: background 0.3s ease;
+}
+
+.close-btn:active {
+	background: rgba(255, 255, 255, 0.2);
+}
+
+/* 标签选择弹窗样式 */
+.tag-selector-modal {
+	max-height: 85vh;
+}
+
+.tag-selector-body {
+	max-height: 60vh;
+	overflow-y: auto;
+	padding: 30rpx;
+}
+
+/* 已选择标签预览区域 */
+.selected-tags-preview {
+	background: linear-gradient(135deg, #E8F5E8, #F0F8F0);
+	border: 2rpx solid #4CAF50;
+	border-radius: 15rpx;
+	padding: 20rpx;
+	margin-bottom: 25rpx;
+}
+
+.preview-label {
+	font-size: 24rpx;
+	color: #2E7D32;
+	font-weight: 600;
+	margin-bottom: 12rpx;
+	display: block;
+}
+
+.selected-tags-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10rpx;
+}
+
+.selected-tag-item {
+	background: linear-gradient(135deg, #4CAF50, #66BB6A);
+	color: white;
+	padding: 8rpx 15rpx;
+	border-radius: 20rpx;
+	font-size: 24rpx;
+	display: flex;
+	align-items: center;
+	gap: 8rpx;
+	box-shadow: 0 2rpx 8rpx rgba(76, 175, 80, 0.3);
+}
+
+.remove-tag {
+	background: rgba(255, 255, 255, 0.3);
+	border-radius: 50%;
+	width: 28rpx;
+	height: 28rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 18rpx;
+	font-weight: bold;
+	cursor: pointer;
+}
+
+.remove-tag:active {
+	background: rgba(255, 255, 255, 0.5);
+}
+
+/* 可选标签区域 */
+.available-tags-section {
+	margin-top: 20rpx;
+}
+
+.section-label {
+	font-size: 26rpx;
+	color: #5D4037;
+	font-weight: 600;
+	margin-bottom: 15rpx;
+	display: block;
+}
+
+.tag-grid-improved {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 12rpx;
+}
+
+.tag-option-improved {
+	background: linear-gradient(145deg, #FFFFFF, #F8F9FA);
+	border: 2rpx solid #E9ECEF;
+	border-radius: 15rpx;
+	padding: 16rpx 12rpx;
+	text-align: center;
+	transition: all 0.3s ease;
+	cursor: pointer;
+	position: relative;
+	min-height: 80rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-direction: column;
+	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+}
+
+.tag-option-improved:active {
+	transform: scale(0.95);
+}
+
+.tag-option-improved.selected {
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
+	border-color: #FF5722;
+	color: white;
+	box-shadow: 0 4rpx 15rpx rgba(255, 138, 101, 0.4);
+}
+
+.tag-text {
+	font-size: 24rpx;
+	font-weight: 500;
+	color: inherit;
+}
+
+.tag-check {
+	position: absolute;
+	top: -5rpx;
+	right: -5rpx;
+	background: #4CAF50;
+	color: white;
+	border-radius: 50%;
+	width: 28rpx;
+	height: 28rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 16rpx;
+	font-weight: bold;
+	box-shadow: 0 2rpx 6rpx rgba(76, 175, 80, 0.4);
+}
+
+/* 按钮样式改进 */
+.modal-btn {
+	display: flex;
+	align-items: center;
+	gap: 8rpx;
+	padding: 20rpx 35rpx;
+	border-radius: 18rpx;
+	font-size: 26rpx;
+	font-weight: 600;
+	border: none;
+	transition: all 0.3s ease;
+	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+}
+
+.btn-icon {
+	font-size: 22rpx;
+}
+
+.cancel-btn {
+	background: linear-gradient(135deg, #9E9E9E, #757575);
+	color: white;
+}
+
+.confirm-btn {
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
+	color: white;
+}
+
+.modal-btn:active {
+	transform: scale(0.95);
+}
+
+/* 旧样式保持兼容 */
+.tag-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 15rpx;
+	margin-bottom: 20rpx;
+}
+
+.tag-option {
+	background: #f8f9fa;
+	border: 2rpx solid #e9ecef;
+	color: #666;
+	padding: 20rpx;
+	border-radius: 12rpx;
+	text-align: center;
+	font-size: 26rpx;
+	transition: all 0.3s ease;
+	cursor: pointer;
+}
+
+.tag-option.selected {
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
+	border-color: #FF8A65;
+	color: white;
+}
+
+.tag-option:active {
+	transform: scale(0.95);
+}
+
+/* 标签选择器样式 */
+.tag-selector {
+	background: rgba(255, 255, 255, 0.8);
+	border: 2rpx solid rgba(255, 183, 77, 0.5);
+	border-radius: 15rpx;
+	padding: 12rpx 16rpx;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	min-height: 60rpx;
+	cursor: pointer;
+	transition: all 0.3s ease;
+}
+
+.tag-selector:active {
+	border-color: #FF8A65;
+	background: rgba(255, 255, 255, 0.95);
+}
+
+/* 改进的标签选择器样式 */
+.tag-selector-improved {
+	background: linear-gradient(145deg, #FFFFFF, #FFF8E1);
+	border: 2rpx solid #FFB74D;
+	border-radius: 18rpx;
+	padding: 20rpx;
+	display: flex;
+	align-items: center;
+	gap: 15rpx;
+	min-height: 80rpx;
+	transition: all 0.3s ease;
+	box-shadow: 0 4rpx 12rpx rgba(255, 183, 77, 0.15);
+}
+
+.tag-selector-improved:active {
+	border-color: #FF8A65;
+	background: linear-gradient(145deg, #FFF8E1, #FFFFFF);
+	transform: scale(0.98);
+}
+
+.selected-tags-container {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8rpx;
+	flex: 1;
+	align-items: center;
+	max-height: 100rpx;
+	overflow: hidden;
+}
+
+.selected-tag-wrapper {
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
+	border-radius: 15rpx;
+	padding: 6rpx 12rpx;
+	display: flex;
+	align-items: center;
+	gap: 6rpx;
+	box-shadow: 0 2rpx 8rpx rgba(255, 138, 101, 0.3);
+	transition: all 0.2s ease;
+}
+
+.selected-tag-wrapper:active {
+	transform: scale(0.95);
+}
+
+.selected-tag-improved {
+	color: white;
+	font-size: 22rpx;
+	font-weight: 500;
+}
+
+.tag-remove {
+	background: rgba(255, 255, 255, 0.3);
+	color: white;
+	border-radius: 50%;
+	width: 24rpx;
+	height: 24rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 16rpx;
+	font-weight: bold;
+	transition: all 0.2s ease;
+}
+
+.tag-remove:active {
+	background: rgba(255, 255, 255, 0.5);
+	transform: scale(1.1);
+}
+
+.tag-count-badge {
+	background: linear-gradient(135deg, #FFC107, #FF9800);
+	color: white;
+	font-size: 20rpx;
+	font-weight: 600;
+	padding: 4rpx 8rpx;
+	border-radius: 12rpx;
+	margin-left: 4rpx;
+	box-shadow: 0 2rpx 6rpx rgba(255, 193, 7, 0.3);
+}
+
+.placeholder-container {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 2rpx;
+}
+
+.placeholder-improved {
+	color: #8D6E63;
+	font-size: 26rpx;
+	font-weight: 500;
+}
+
+.placeholder-hint {
+	color: #BCAAA4;
+	font-size: 20rpx;
+	font-style: italic;
+}
+
+.arrow-container {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: linear-gradient(135deg, #FF8A65, #FFB74D);
+	border-radius: 12rpx;
+	width: 40rpx;
+	height: 40rpx;
+	box-shadow: 0 2rpx 8rpx rgba(255, 138, 101, 0.3);
+}
+
+.arrow-improved {
+	color: white;
+	font-size: 20rpx;
+}
+
+.selected-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8rpx;
+	flex: 1;
+}
+
+.selected-tag {
+	background: #FF8A65;
+	color: white;
+	font-size: 22rpx;
+	padding: 4rpx 12rpx;
+	border-radius: 12rpx;
+	box-shadow: 0 2rpx 4rpx rgba(255, 138, 101, 0.3);
+}
+
+.placeholder {
+	color: #999;
+	font-size: 28rpx;
+}
+
+.arrow {
+	color: #FF8A65;
+	font-size: 18rpx;
+	margin-left: 10rpx;
 }
 
 /* 浮现菜品效果 */
