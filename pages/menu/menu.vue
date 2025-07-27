@@ -97,12 +97,12 @@
 					<view class="form-group">
 						<text class="form-label">菜品名称</text>
 						<input class="form-input" 
-							   placeholder="请输入菜品名称" 
-							   v-model="editingItem.name"
-							   maxlength="20"
-							   confirm-type="done"
-							   focus
-							   cursor-spacing="0" />
+								placeholder="请输入菜品名称" 
+								v-model="editingItem.name"
+								maxlength="20"
+								confirm-type="done"
+								focus
+								cursor-spacing="0" />
 					</view>
 					
 					<!-- 价格 -->
@@ -275,9 +275,9 @@
 						<text>请按照以下格式输入菜单数据（每行一个菜品）：</text>
 					</view>
 					<view class="import-example">
-						<text>菜品名称,价格,餐食类型,用餐时段,菜品标签
-小笼包,8,日常,早餐,面食|营养
-蛋炒饭,15,日常,午餐|晚餐,快餐|营养</text>
+						<text>菜品名称,价格,餐食类型,用餐时段,菜品标签\n
+									小笼包,8,日常,早餐,面食|营养\n
+									蛋炒饭,15,日常,午餐|晚餐,快餐|营养</text>
 					</view>
 					<textarea class="import-textarea large-textarea" 
 							  placeholder="请输入菜单数据..."
@@ -1284,7 +1284,7 @@ export default {
 
 .modal-body {
 	padding: 40rpx;
-	max-height: 500rpx;
+	max-height: 55vh;
 	overflow-y: auto;
 }
 
@@ -1293,7 +1293,6 @@ export default {
 	display: flex;
 	justify-content: flex-end;
 	gap: 20rpx;
-	background: #f8f9fa;
 }
 
 /* 表单样式 */
@@ -1310,7 +1309,7 @@ export default {
 }
 
 .form-input {
-	width: 100%;
+	width: auto;
 	background: #f8f9fa;
 	border: 2rpx solid #e9ecef;
 	border-radius: 12rpx;
@@ -1318,7 +1317,6 @@ export default {
 	font-size: 28rpx;
 	color: #333;
 	transition: all 0.3s ease;
-	box-sizing: border-box;
 }
 
 .form-input:focus {
@@ -1462,7 +1460,7 @@ export default {
 	color: white;
 	border: none;
 	border-radius: 15rpx;
-	padding: 24rpx 30rpx;
+	padding: 12rpx 30rpx;
 	font-size: 26rpx;
 	white-space: nowrap;
 	transition: all 0.3s ease;
@@ -1564,7 +1562,7 @@ export default {
 	border: 1rpx solid #e9ecef;
 	transition: all 0.2s ease;
 	min-height: 100rpx;
-	width: 100%;
+	width: 90%;
 	box-sizing: border-box;
 }
 
@@ -1706,7 +1704,7 @@ export default {
 
 .import-export-body .large-textarea {
 	flex: 1;
-	height: auto !important;
+	height: 1000px !important;
 	min-height: 400rpx;
 	border: 1rpx solid #e9ecef;
 	border-radius: 8rpx;
